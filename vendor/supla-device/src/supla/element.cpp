@@ -1,0 +1,441 @@
+// SPDX-FileCopyrightText: AC SOFTWARE SP. Z O.O.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "element.h"
+
+#include <supla-common/proto.h>
+#include <supla/channels/channel.h>
+#include <supla/log_wrapper.h>
+#include <supla/storage/config.h>
+#include <supla/time.h>
+
+namespace Supla {
+
+namespace Protocol {
+class SuplaSrpc;
+}  // namespace Protocol
+
+Element *Element::firstPtr = nullptr;
+bool Element::invalidatePtr = false;
+
+Element::Element(ElementMode mode)
+    : registeredElement(mode == ElementMode::Registered) {
+  if (!registeredElement) {
+    return;
+  }
+  if (firstPtr == nullptr) {
+    firstPtr = this;
+  } else {
+    last()->nextPtr = this;
+  }
+}
+
+Element::~Element() {
+  if (!registeredElement) {
+    return;
+  }
+  invalidatePtr = true;
+  if (begin() == this) {
+    firstPtr = next();
+    return;
+  }
+
+  auto ptr = begin();
+  while (ptr->next() != this) {
+    ptr = ptr->next();
+  }
+
+  ptr->nextPtr = ptr->next()->next();
+}
+
+Element *Element::begin() {
+  return firstPtr;
+}
+
+Element *Element::last() {
+  Element *ptr = firstPtr;
+  while (ptr && ptr->nextPtr) {
+    ptr = ptr->nextPtr;
+  }
+  return ptr;
+}
+
+Element *Element::getElementByChannelNumber(int channelNumber) {
+  if (channelNumber < 0) {
+    return nullptr;
+  }
+
+  Element *element = begin();
+  while (element != nullptr && element->getChannelNumber() != channelNumber &&
+         element->getSecondaryChannelNumber() != channelNumber) {
+    element = element->next();
+  }
+
+  return element;
+}
+
+Element *Element::getOwnerOfSubDeviceId(int subDeviceId) {
+  if (subDeviceId <= 0) {
+    return nullptr;
+  }
+
+  Element *element = begin();
+  while (element != nullptr && !element->isOwnerOfSubDeviceId(subDeviceId)) {
+    element = element->next();
+  }
+
+  return element;
+}
+
+bool Element::IsAnyUpdatePending() {
+  Element *element = begin();
+  while (element != nullptr) {
+    if (element->isAnyUpdatePending()) {
+      return true;
+    }
+    element = element->next();
+  }
+  return false;
+}
+
+Element *Element::next() {
+  return nextPtr;
+}
+
+void Element::onInit() {}
+
+void Element::onLoadConfig(SuplaDeviceClass *) {}
+
+void Element::purgeConfig() {}
+
+void Element::onLoadState() {}
+
+void Element::onSaveState() {}
+
+void Element::onRegistered(Supla::Protocol::SuplaSrpc *suplaSrpc) {
+  if (suplaSrpc == nullptr) {
+    return;
+  }
+
+  if (getChannel()) {
+    getChannel()->onRegistered();
+  }
+
+  if (getSecondaryChannel()) {
+    getSecondaryChannel()->onRegistered();
+  }
+}
+
+bool Element::isChannelStateEnabled() const {
+  if (getChannel() == nullptr) {
+    return false;
+  }
+  return getChannel()->isChannelStateEnabled();
+}
+
+void Element::iterateAlways() {}
+
+bool Element::iterateConnected(void *ptr) {
+  (void)(ptr);
+  return iterateConnected();
+}
+
+bool Element::iterateConnected() {
+  bool response = true;
+  Channel *secondaryChannel = getSecondaryChannel();
+  if (secondaryChannel && secondaryChannel->isUpdateReady()) {
+    secondaryChannel->sendUpdate();
+    response = false;
+  }
+
+  Channel *channel = getChannel();
+  if (channel && channel->isUpdateReady()) {
+    channel->sendUpdate();
+    response = false;
+  }
+  return response;
+}
+
+void Element::onTimer() {}
+
+void Element::onFastTimer() {}
+
+int32_t Element::handleNewValueFromServer(TSD_SuplaChannelNewValue *newValue) {
+  (void)(newValue);
+  return -1;
+}
+
+void Element::fillSuplaChannelNewValue(TSD_SuplaChannelNewValue *value) {
+  (void)(value);
+}
+
+bool Element::getRemainingCountdownTimerSec(uint32_t *remainingSec) const {
+  if (remainingSec) {
+    *remainingSec = 0;
+  }
+  return false;
+}
+
+int Element::getChannelNumber() const {
+  int result = -1;
+  auto channel = getChannel();
+  if (channel) {
+    result = channel->getChannelNumber();
+  }
+  return result;
+}
+
+int Element::getSecondaryChannelNumber() const {
+  int result = -1;
+  auto channel = getSecondaryChannel();
+  if (channel) {
+    result = channel->getChannelNumber();
+  }
+  return result;
+}
+
+const Channel *Element::getChannel() const {
+  return nullptr;
+}
+
+const Channel *Element::getSecondaryChannel() const {
+  return nullptr;
+}
+
+Channel *Element::getChannel() {
+  return nullptr;
+}
+
+Channel *Element::getSecondaryChannel() {
+  return nullptr;
+}
+
+const Channel *Element::getChannelByChannelNumber(int channelNumber) const {
+  if (channelNumber < 0) {
+    return nullptr;
+  }
+
+  auto channel = getChannel();
+  if (channel && channel->getChannelNumber() == channelNumber) {
+    return channel;
+  }
+
+  channel = getSecondaryChannel();
+  if (channel && channel->getChannelNumber() == channelNumber) {
+    return channel;
+  }
+
+  return nullptr;
+}
+
+Channel *Element::getChannelByChannelNumber(int channelNumber) {
+  if (channelNumber < 0) {
+    return nullptr;
+  }
+
+  auto channel = getChannel();
+  if (channel && channel->getChannelNumber() == channelNumber) {
+    return channel;
+  }
+
+  channel = getSecondaryChannel();
+  if (channel && channel->getChannelNumber() == channelNumber) {
+    return channel;
+  }
+
+  return nullptr;
+}
+
+void Element::handleGetChannelState(TDSC_ChannelState *channelState) {
+  if (channelState == nullptr) {
+    return;
+  }
+  Channel *channel = getChannel();
+  while (channel) {
+    if (channelState->ChannelNumber == channel->getChannelNumber()) {
+      if (channel->isBatteryPoweredFieldEnabled()) {
+        channelState->Fields |= SUPLA_CHANNELSTATE_FIELD_BATTERYPOWERED;
+        channelState->BatteryPowered = channel->isBatteryPowered() ? 1 : 0;
+      }
+
+      channelState->BatteryLevel = channel->getBatteryLevel();
+      if (channelState->BatteryLevel <= 100) {
+        channelState->Fields |= SUPLA_CHANNELSTATE_FIELD_BATTERYLEVEL;
+      } else {
+        channelState->BatteryLevel = 0;
+      }
+
+      switch (channel->getBatteryState()) {
+        case BatteryState::Normal:
+          channelState->BatteryState = SUPLA_BATTERY_STATE_OK;
+          channelState->Fields |= SUPLA_CHANNELSTATE_FIELD_BATTERY_STATE;
+          break;
+        case BatteryState::Low:
+          channelState->BatteryState = SUPLA_BATTERY_STATE_LOW;
+          channelState->Fields |= SUPLA_CHANNELSTATE_FIELD_BATTERY_STATE;
+          break;
+        case BatteryState::NotSet:
+          break;
+      }
+      if ((channelState->Fields & SUPLA_CHANNELSTATE_FIELD_BATTERY_STATE) &&
+          channel->isBatteryStateAppliedToWholeDevice()) {
+        channelState->Fields |=
+            SUPLA_CHANNELSTATE_FIELD_DEVICE_BATTERY_STATE;
+      }
+
+      if (channel->isBridgeSignalStrengthAvailable()) {
+        channelState->Fields |=
+            SUPLA_CHANNELSTATE_FIELD_BRIDGENODESIGNALSTRENGTH;
+        channelState->BridgeNodeSignalStrength =
+            channel->getBridgeSignalStrength();
+      }
+      return;
+    }
+    if (channel != getSecondaryChannel()) {
+      channel = getSecondaryChannel();
+    } else {
+      return;
+    }
+  }
+  return;
+}
+
+int Element::handleCalcfgFromServer(TSD_DeviceCalCfgRequest *request) {
+  (void)(request);
+  return SUPLA_CALCFG_RESULT_NOT_SUPPORTED;
+}
+
+uint32_t Element::getCalcfgPendingTimeoutMs(
+    TSD_DeviceCalCfgRequest *request) const {
+  (void)(request);
+  return 0;
+}
+
+Element & Element::disableChannelState() {
+  if (getChannel()) {
+    getChannel()->unsetFlag(SUPLA_CHANNEL_FLAG_CHANNELSTATE);
+  }
+  return *this;
+}
+
+uint8_t Element::handleChannelConfig(TSD_ChannelConfig *result, bool local) {
+  (void)(result);
+  (void)(local);
+  SUPLA_LOG_ERROR(
+      "Element[%d]: received channel config reply, but handling is missing",
+      getChannelNumber());
+  return SUPLA_RESULTCODE_UNSUPORTED;
+}
+
+uint8_t Element::handleWeeklySchedule(TSD_ChannelConfig *newWeeklySchedule,
+                                      bool altSchedule,
+                                      bool local) {
+  (void)(newWeeklySchedule);
+  (void)(altSchedule);
+  (void)(local);
+  SUPLA_LOG_ERROR(
+      "Element[%d]: received weekly schedule, but handling is missing",
+      getChannelNumber());
+  return SUPLA_RESULTCODE_UNSUPORTED;
+}
+
+void Element::handleSetChannelConfigResult(
+    TSDS_SetChannelConfigResult *result) {
+  (void)(result);
+  SUPLA_LOG_ERROR(
+      "Element[%d]: received set channel config reply, but handling is missing",
+      getChannelNumber());
+}
+
+void Element::handleChannelConfigFinished() {
+  SUPLA_LOG_ERROR(
+      "Element[%d]: received channel config finished, but handling is missing",
+      getChannelNumber());
+}
+
+void Element::handleChannelConfigFinished(int channelNumber) {
+  if (channelNumber == getChannelNumber()) {
+    handleChannelConfigFinished();
+  }
+}
+
+void Element::generateKey(char *output, const char *key) const {
+  Supla::Config::generateKey(output, getChannelNumber(), key);
+}
+
+void Element::onSoftReset() {
+}
+
+void Element::onDeviceConfigChange(uint64_t fieldBit) {
+  (void)(fieldBit);
+}
+
+void Element::NotifyElementsAboutConfigChange(
+    uint64_t fieldBit) {
+  for (auto element = Supla::Element::begin(); element != nullptr;
+       element = element->next()) {
+    element->onDeviceConfigChange(fieldBit);
+    delay(0);
+  }
+}
+
+bool Element::IsInvalidPtrSet() {
+  return invalidatePtr;
+}
+
+void Element::ClearInvalidPtr() {
+  invalidatePtr = false;
+}
+
+bool Element::isAnyUpdatePending() const {
+  return false;
+}
+
+void Element::setInitialCaption(const char *caption, bool secondaryChannel) {
+  Supla::Channel *ch = nullptr;
+  if (!secondaryChannel) {
+    ch = getChannel();
+  } else {
+    ch = getSecondaryChannel();
+  }
+
+  if (ch) {
+    ch->setInitialCaption(caption);
+  }
+}
+
+bool Element::setDefaultFunction(uint32_t defaultFunction) {
+  Supla::Channel *ch = getChannel();
+  if (ch) {
+    auto current = ch->getDefaultFunction();
+    if (current == defaultFunction) {
+      return false;
+    }
+    ch->setDefaultFunction(defaultFunction);
+    onFunctionChange(current, defaultFunction);
+  }
+  return true;
+}
+
+bool Element::setFunction(uint32_t newFunction) {
+  return setDefaultFunction(newFunction);
+}
+
+bool Element::setRuntimeFunction(uint32_t newFunction) {
+  return setFunction(newFunction);
+}
+
+void Element::onFunctionChange(uint32_t currentFunction, uint32_t newFunction) {
+  (void)(currentFunction);
+  (void)(newFunction);
+}
+
+bool Element::isOwnerOfSubDeviceId(int) const {
+  return false;
+}
+
+bool Element::isStateStorageMigrationNeeded() const {
+  return false;
+}
+
+};  // namespace Supla

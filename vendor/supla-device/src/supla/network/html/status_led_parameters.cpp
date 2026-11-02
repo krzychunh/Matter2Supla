@@ -1,0 +1,77 @@
+// SPDX-FileCopyrightText: AC SOFTWARE SP. Z O.O.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#ifndef ARDUINO_ARCH_AVR
+#include <string.h>
+#include <supla/network/web_sender.h>
+#include <supla/storage/config.h>
+#include <supla/storage/storage.h>
+#include <supla/tools.h>
+#include <supla/device/remote_device_config.h>
+#include <supla/device/status_led.h>
+#include <supla/storage/config_tags.h>
+
+#include "status_led_parameters.h"
+
+namespace Supla {
+
+namespace Html {
+
+StatusLedParameters::StatusLedParameters() : HtmlElement(HTML_SECTION_FORM) {
+}
+
+StatusLedParameters::~StatusLedParameters() {
+}
+
+void StatusLedParameters::send(Supla::WebSender* sender) {
+  auto cfg = Supla::Storage::ConfigInstance();
+  if (cfg) {
+    int8_t value = 0;
+    cfg->getInt8(Supla::ConfigTag::StatusLedCfgTag, &value);
+
+    const char key[] = "led";
+    sender->labeledField(key, "Status LED", [&]() {
+      sender->selectTag(key, key).body([&]() {
+        sender->selectOption(0, "ON - WHEN CONNECTED", value == 0);
+        sender->selectOption(1, "OFF - WHEN CONNECTED", value == 1);
+        sender->selectOption(2, "ALWAYS OFF", value == 2);
+      });
+    });
+  }
+}
+
+bool StatusLedParameters::handleResponse(const char* key, const char* value) {
+  auto cfg = Supla::Storage::ConfigInstance();
+  if (strcmp(key, "led") == 0) {
+    int led = stringToUInt(value);
+    int8_t valueInCfg = -1;
+    cfg->getInt8(Supla::ConfigTag::StatusLedCfgTag, &valueInCfg);
+    if (valueInCfg != led) {
+      switch (led) {
+        default:
+        case 0: {
+          cfg->setInt8(Supla::ConfigTag::StatusLedCfgTag, 0);
+          break;
+        }
+        case 1: {
+          cfg->setInt8(Supla::ConfigTag::StatusLedCfgTag, led);
+          break;
+        }
+        case 2: {
+          cfg->setInt8(Supla::ConfigTag::StatusLedCfgTag, led);
+          break;
+        }
+      }
+      cfg->setDeviceConfigChangeFlag();
+      Supla::Element::NotifyElementsAboutConfigChange(
+          SUPLA_DEVICE_CONFIG_FIELD_STATUS_LED);
+    }
+    return true;
+  }
+  return false;
+}
+
+};  // namespace Html
+};  // namespace Supla
+
+#endif  // ARDUINO_ARCH_AVR

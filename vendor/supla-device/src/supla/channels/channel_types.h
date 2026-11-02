@@ -1,0 +1,43 @@
+// SPDX-FileCopyrightText: AC SOFTWARE SP. Z O.O.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#ifndef SRC_SUPLA_CHANNELS_CHANNEL_TYPES_H_
+#define SRC_SUPLA_CHANNELS_CHANNEL_TYPES_H_
+
+#include <stdint.h>
+
+namespace Supla {
+
+enum class ChannelType : uint8_t {
+  NOT_SET,
+  BINARYSENSOR,
+  DISTANCESENSOR,
+  RELAY,
+  THERMOMETER,
+  HUMIDITYSENSOR,
+  HUMIDITYANDTEMPSENSOR,
+  WINDSENSOR,
+  PRESSURESENSOR,
+  RAINSENSOR,
+  WEIGHTSENSOR,
+  DIMMER,
+  RGBLEDCONTROLLER,
+  DIMMERANDRGBLED,
+  ELECTRICITY_METER,
+  IMPULSE_COUNTER,
+  HVAC,
+  VALVE_OPENCLOSE,
+  VALVE_PERCENTAGE,
+  GENERAL_PURPOSE_MEASUREMENT,
+  GENERAL_PURPOSE_METER,
+  ACTIONTRIGGER,
+  CONTAINER,
+};
+
+uint32_t channelTypeToProtoType(ChannelType type);
+ChannelType protoTypeToChannelType(uint32_t type);
+
+}  // namespace Supla
+
+
+#endif  // SRC_SUPLA_CHANNELS_CHANNEL_TYPES_H_

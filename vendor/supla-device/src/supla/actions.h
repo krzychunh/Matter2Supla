@@ -1,0 +1,160 @@
+// SPDX-FileCopyrightText: AC SOFTWARE SP. Z O.O.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#ifndef SRC_SUPLA_ACTIONS_H_
+#define SRC_SUPLA_ACTIONS_H_
+
+#include <stdint.h>
+
+// Actions are used in ActionHandler elements. They are grouped by most common
+// usage, but you should not rely on it. Please check exact supported actions
+// in ActionHandler's element documentation
+
+namespace Supla {
+enum Action {
+  // Relays
+  TURN_ON,
+  TURN_ON_WITHOUT_TIMER,  // used with staircase timer function, when
+                          // timer should not be used this time
+  TURN_OFF,
+  TOGGLE,
+  TOGGLE_WITH_POSTPONED_COMM,
+
+  // Settable binary sensors
+  SET,
+  CLEAR,
+
+  // Roller shutters
+  OPEN,
+  CLOSE,
+  STOP,
+  OPEN_OR_STOP,
+  CLOSE_OR_STOP,
+  COMFORT_UP_POSITION,
+  COMFORT_DOWN_POSITION,
+  STEP_BY_STEP,
+  MOVE_UP,
+  MOVE_DOWN,
+  MOVE_UP_OR_STOP,
+  MOVE_DOWN_OR_STOP,
+  // "Internal button" actions are inverted when "invert button" config is set
+  INTERNAL_BUTTON_MOVE_UP_OR_STOP,
+  INTERNAL_BUTTON_MOVE_DOWN_OR_STOP,
+  INTERNAL_BUTTON_MOVE_UP,
+  INTERNAL_BUTTON_MOVE_DOWN,
+  INTERNAL_BUTTON_COMFORT_UP,
+  INTERNAL_BUTTON_COMFORT_DOWN,
+
+  // Dimmable light, RGB(W) LEDs
+  BRIGHTEN_ALL,
+  DIM_ALL,
+  BRIGHTEN_R,
+  BRIGHTEN_G,
+  BRIGHTEN_B,
+  BRIGHTEN_W,
+  BRIGHTEN_RGB,
+  DIM_R,
+  DIM_G,
+  DIM_B,
+  DIM_W,
+  DIM_RGB,
+  TURN_ON_RGB,
+  TURN_OFF_RGB,
+  TOGGLE_RGB,
+  TURN_ON_W,
+  TURN_OFF_W,
+  TOGGLE_W,
+  TURN_ON_RGB_DIMMED,
+  TURN_ON_W_DIMMED,
+  TURN_ON_ALL_DIMMED,
+  ITERATE_DIM_RGB,
+  ITERATE_DIM_W,
+  ITERATE_DIM_ALL,
+
+  // Impulse counter
+  RESET,
+  INCREMENT,
+  DECREMENT,
+  ENABLE,
+  DISABLE,
+
+  // Action trigger
+  SEND_AT_TURN_ON,
+  SEND_AT_TURN_OFF,
+  SEND_AT_TOGGLE_x1,
+  SEND_AT_TOGGLE_x2,
+  SEND_AT_TOGGLE_x3,
+  SEND_AT_TOGGLE_x4,
+  SEND_AT_TOGGLE_x5,
+  SEND_AT_HOLD,
+  SEND_AT_SHORT_PRESS_x1,
+  SEND_AT_SHORT_PRESS_x2,
+  SEND_AT_SHORT_PRESS_x3,
+  SEND_AT_SHORT_PRESS_x4,
+  SEND_AT_SHORT_PRESS_x5,
+
+  // SuplaDevice
+  ENTER_CONFIG_MODE,
+  TOGGLE_CONFIG_MODE,
+  RESET_TO_FACTORY_SETTINGS,
+  SOFT_RESTART,
+  START_LOCAL_WEB_SERVER,
+  STOP_LOCAL_WEB_SERVER,
+  CHECK_SW_UPDATE,
+  LEAVE_CONFIG_MODE_AND_RESET,
+  ENTER_CONFIG_MODE_OR_RESET_TO_FACTORY,
+
+  // Weight sensor
+  TARE_SCALES,
+
+  VOLUME_UP,
+  VOLUME_DOWN,
+  MUTE_SOUND_ALARM,
+  ENABLE_EXTERNAL_SOUND_ALARM,
+  DISABLE_EXTERNAL_SOUND_ALARM,
+
+  // Thermostat
+  INCREASE_TEMPERATURE,
+  DECREASE_TEMPERATURE,
+  INCREASE_HEATING_TEMPERATURE,
+  DECREASE_HEATING_TEMPERATURE,
+  INCREASE_COOLING_TEMPERATURE,
+  DECREASE_COOLING_TEMPERATURE,
+  SWITCH_TO_MANUAL_MODE,
+  SWITCH_TO_WEEKLY_SCHEDULE_MODE,
+  SWITCH_TO_MANUAL_MODE_HEAT,
+  SWITCH_TO_MANUAL_MODE_COOL,
+  SWITCH_TO_MANUAL_MODE_HEAT_COOL,
+  TOGGLE_MANUAL_WEEKLY_SCHEDULE_MODES,
+  TOGGLE_OFF_MANUAL_WEEKLY_SCHEDULE_MODES,
+
+  // Other
+  SEQUENCE_1_START,
+  SEQUENCE_1_STOP,
+  SEQUENCE_2_START,
+  SEQUENCE_2_STOP,
+  SEQUENCE_3_START,
+  SEQUENCE_3_STOP,
+
+  // Direction-specific roller shutter stops. Keep new actions at the end so
+  // ids of existing actions remain unchanged.
+  UP_STOP,
+  DOWN_STOP,
+  INTERNAL_BUTTON_UP_STOP,
+  INTERNAL_BUTTON_DOWN_STOP,
+
+  // ActionTrigger button mode controls. Keep these ids at the end so all
+  // previously stored/local action ids remain unchanged.
+  LOCK,
+  UNLOCK,
+  TOGGLE_LOCK,
+
+  // Keep it as last item
+  ACTION_ID_MAX
+};
+}  // namespace Supla
+
+// Internally, action ids are stored as uint16_t
+static_assert(Supla::ACTION_ID_MAX <= UINT16_MAX);
+
+#endif  // SRC_SUPLA_ACTIONS_H_

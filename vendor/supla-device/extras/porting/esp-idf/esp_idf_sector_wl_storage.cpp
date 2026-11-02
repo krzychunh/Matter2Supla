@@ -1,0 +1,91 @@
+// SPDX-FileCopyrightText: AC SOFTWARE SP. Z O.O.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "esp_idf_sector_wl_storage.h"
+
+#include <supla/log_wrapper.h>
+#include <supla/network/network.h>
+#include <esp_partition.h>
+
+#define SUPLA_STORAGE_PARTITION_TYPE 0x55
+
+using Supla::EspIdfSectorWlStorage;
+
+EspIdfSectorWlStorage::EspIdfSectorWlStorage(uint32_t size) : Storage(0, size,
+    WearLevelingMode::SECTOR_WRITE_MODE) {
+  setStateSavePeriod(5000);
+}
+
+EspIdfSectorWlStorage::EspIdfSectorWlStorage(uint32_t offset, uint32_t size) :
+    Storage(offset, size, WearLevelingMode::SECTOR_WRITE_MODE) {
+  setStateSavePeriod(5000);
+}
+
+EspIdfSectorWlStorage::~EspIdfSectorWlStorage() {
+}
+
+bool EspIdfSectorWlStorage::init() {
+  storagePartition = esp_partition_find_first(
+      static_cast<esp_partition_type_t>(SUPLA_STORAGE_PARTITION_TYPE),
+      static_cast<esp_partition_subtype_t>(0),
+      "suplastorage");
+
+  if (storagePartition == nullptr) {
+    SUPLA_LOG_ERROR("Storage partition not found");
+    initResult = false;
+    return initResult;
+  }
+
+  return Storage::init();
+}
+
+void EspIdfSectorWlStorage::commit() {
+}
+
+int EspIdfSectorWlStorage::readStorage(unsigned int address,
+    unsigned char *buf,
+    unsigned int size,
+    bool logs) {
+  if (storagePartition == nullptr) {
+    return 0;
+  }
+  auto result = esp_partition_read(storagePartition, address, buf, size);
+  if (result != ESP_OK) {
+    SUPLA_LOG_ERROR("Failed to read storage: addr %d, size %d (%d)",
+        address, size, result);
+    return 0;
+  }
+//  if (logs) {
+//    Supla::Network::printData("Storage read:", buf, size);
+//  }
+  return size;
+}
+
+int EspIdfSectorWlStorage::writeStorage(unsigned int address,
+    const unsigned char *buf,
+    unsigned int size) {
+  if (storagePartition == nullptr) {
+    return 0;
+  }
+  auto result = esp_partition_write(storagePartition, address, buf, size);
+  if (result != ESP_OK) {
+    SUPLA_LOG_ERROR("Failed to write storage: addr %d, size %d (%d)",
+        address, size, result);
+    return 0;
+  }
+
+  return size;
+}
+
+void EspIdfSectorWlStorage::eraseSector(unsigned int address, int size) {
+  if (storagePartition == nullptr) {
+    return;
+  }
+  auto result = esp_partition_erase_range(storagePartition, address, size);
+  if (result != ESP_OK) {
+    SUPLA_LOG_ERROR("Failed to erase storage sector (%d), addr: %d, size: %d",
+        result, address, size);
+  }
+
+  return;
+}

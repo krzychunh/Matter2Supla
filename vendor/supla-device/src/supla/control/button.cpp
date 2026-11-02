@@ -1,0 +1,760 @@
+// SPDX-FileCopyrightText: AC SOFTWARE SP. Z O.O.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include <supla/time.h>
+#include <supla/storage/storage.h>
+#include <supla/storage/config.h>
+#include <supla/events.h>
+#include <supla/actions.h>
+#include <SuplaDevice.h>
+#include <supla/log_wrapper.h>
+#include <supla/storage/config_tags.h>
+
+#include "button.h"
+
+#define CFG_MODE_ON_HOLD_TIME 5000
+
+namespace {
+constexpr uint32_t kButtonTimingMinMs = 200;
+constexpr uint32_t kButtonTimingMaxMs = 10000;
+}  // namespace
+
+using Supla::Control::Button;
+
+int Button::buttonCounter = 0;
+
+Button::Button(Supla::Io::IoPin inputPin)
+    : SimpleButton(inputPin) {
+  buttonNumber = buttonCounter;
+  buttonCounter++;
+}
+
+Button::Button(Supla::Io::Base *io, int pin, bool pullUp, bool invertLogic)
+    : SimpleButton(io, pin, pullUp, invertLogic) {
+  buttonNumber = buttonCounter;
+  buttonCounter++;
+}
+
+Button::Button(int pin, bool pullUp, bool invertLogic)
+    : SimpleButton(pin, pullUp, invertLogic) {
+  buttonNumber = buttonCounter;
+  buttonCounter++;
+}
+
+void Button::onInit() {
+  SimpleButton::onInit();
+}
+
+bool Button::runActionWithActionTriggerPolicy(uint16_t event) {
+  if (runtimeFlags.actionTriggerSuppressActionsUntilRelease) {
+    return true;
+  }
+  runtimeFlags.actionTriggerDispatching = true;
+  const bool hasLockAction = hasEnabledAction(event, Supla::LOCK) ||
+                             hasEnabledAction(event, Supla::UNLOCK) ||
+                             hasEnabledAction(event, Supla::TOGGLE_LOCK);
+  if (!runtimeFlags.actionTriggerModeLocked && !hasLockAction) {
+    runAction(event);
+    runtimeFlags.actionTriggerDispatching = false;
+    return false;
+  }
+
+  const bool allowConfigActions =
+      runtimeFlags.keepConfigButtonTriggerAlwaysAvailable &&
+      runtimeFlags.configButton;
+  // A locked button without local unlock permission may retain only its
+  // explicitly allowed configuration actions. Lock control actions belong to
+  // the AT that owns the binding and must not unlock another AT here.
+  if (runtimeFlags.actionTriggerModeLocked &&
+      !runtimeFlags.actionTriggerLocalUnlockAllowed) {
+    if (allowConfigActions) {
+      runAction(event,
+                {Supla::ENTER_CONFIG_MODE_OR_RESET_TO_FACTORY,
+                 Supla::LEAVE_CONFIG_MODE_AND_RESET});
+    } else {
+      runAction(event, {});
+    }
+    runtimeFlags.actionTriggerDispatching = false;
+    return false;
+  }
+
+  // Select one control action deterministically. A configuration can contain
+  // both LOCK and UNLOCK on one event; executing all of them would make the
+  // final mode depend on the allocation order of handlers.
+  int selectedLockAction = -1;
+  if (runtimeFlags.actionTriggerModeLocked) {
+    if (hasEnabledAction(event, Supla::UNLOCK)) {
+      selectedLockAction = Supla::UNLOCK;
+    } else if (hasEnabledAction(event, Supla::TOGGLE_LOCK)) {
+      selectedLockAction = Supla::TOGGLE_LOCK;
+    } else if (hasEnabledAction(event, Supla::LOCK)) {
+      selectedLockAction = Supla::LOCK;
+    }
+  } else if (hasEnabledAction(event, Supla::LOCK)) {
+    selectedLockAction = Supla::LOCK;
+  } else if (hasEnabledAction(event, Supla::TOGGLE_LOCK)) {
+    selectedLockAction = Supla::TOGGLE_LOCK;
+  } else if (hasEnabledAction(event, Supla::UNLOCK)) {
+    selectedLockAction = Supla::UNLOCK;
+  }
+
+  if (selectedLockAction < 0) {
+    if (allowConfigActions) {
+      runAction(event,
+                {Supla::ENTER_CONFIG_MODE_OR_RESET_TO_FACTORY,
+                 Supla::LEAVE_CONFIG_MODE_AND_RESET});
+    } else {
+      runAction(event, {});
+    }
+    runtimeFlags.actionTriggerDispatching = false;
+    return runtimeFlags.actionTriggerSuppressActionsUntilRelease;
+  }
+
+  if (allowConfigActions) {
+    runAction(event,
+              {static_cast<uint16_t>(selectedLockAction),
+               Supla::ENTER_CONFIG_MODE_OR_RESET_TO_FACTORY,
+               Supla::LEAVE_CONFIG_MODE_AND_RESET});
+  } else {
+    runAction(event, {static_cast<uint16_t>(selectedLockAction)});
+  }
+  runtimeFlags.actionTriggerDispatching = false;
+  return runtimeFlags.actionTriggerSuppressActionsUntilRelease;
+}
+
+void Button::onTimer() {
+  int stateResult = state.update();
+  if (!state.isReady()) {
+    return;
+  }
+  if (runtimeFlags.disabled) {
+    return;
+  }
+  if (runtimeFlags.suppressActionsUntilRelease) {
+    if (stateResult == TO_RELEASED ||
+        (stateResult == RELEASED && !state.isPressedOrPending())) {
+      runtimeFlags.suppressActionsUntilRelease = false;
+    }
+    return;
+  }
+  if (runtimeFlags.actionTriggerSuppressActionsUntilRelease) {
+    if (stateResult == TO_RELEASED ||
+        (stateResult == RELEASED && !state.isPressedOrPending())) {
+      runtimeFlags.actionTriggerSuppressActionsUntilRelease = false;
+    }
+    return;
+  }
+
+  uint32_t timeDelta = millis() - lastStateChangeMs;
+  bool stateChanged = false;
+  const bool deferConditionalEdges =
+      runtimeFlags.conditionalActionsOnClick1 && isBistable() &&
+      multiclickTimeMs > 0;
+  if (stateResult == TO_PRESSED) {
+    SUPLA_LOG_DEBUG("Button[%d] pressed", getButtonNumber());
+    stateChanged = true;
+    if (runActionWithActionTriggerPolicy(ON_PRESS)) return;
+    if (runActionWithActionTriggerPolicy(ON_CHANGE)) return;
+    if (clickCounter <= 1 && holdSend == 0) {
+      if (!deferConditionalEdges) {
+        if (runActionWithActionTriggerPolicy(CONDITIONAL_ON_PRESS)) return;
+      }
+      if (runActionWithActionTriggerPolicy(CONDITIONAL_ON_CHANGE)) return;
+    }
+  } else if (stateResult == TO_RELEASED) {
+    SUPLA_LOG_DEBUG("Button[%d] released", getButtonNumber());
+    stateChanged = true;
+    if (runActionWithActionTriggerPolicy(ON_RELEASE)) return;
+    if (runActionWithActionTriggerPolicy(ON_CHANGE)) return;
+    if (clickCounter <= 1 && holdSend == 0) {
+      if (!deferConditionalEdges) {
+        if (runActionWithActionTriggerPolicy(CONDITIONAL_ON_RELEASE)) return;
+      }
+      if (runActionWithActionTriggerPolicy(CONDITIONAL_ON_CHANGE)) return;
+    }
+    if (clickCounter <= 1 && holdSend > 0) {
+      if (runActionWithActionTriggerPolicy(ON_HOLD_RELEASE)) return;
+    }
+  }
+
+  if (runtimeFlags.waitingForRelease) {
+    if (stateResult != TO_RELEASED) {
+      return;
+    } else {
+      clickCounter = 0;
+      holdSend = 0;
+      lastStateChangeMs = millis();
+    }
+  }
+  runtimeFlags.waitingForRelease = false;
+
+  if (stateChanged) {
+    lastStateChangeMs = millis();
+    if (multiclickTimeMs > 0 && (stateResult == TO_PRESSED || isBistable() ||
+        isMotionSensor() || isCentral())) {
+      if (clickCounter <= maxMulticlickValueConfigured) {
+        // don't increase counter if already at max value
+        clickCounter++;
+      }
+    }
+  }
+
+  if (!stateChanged) {
+    if (lastStateChangeMs) {
+      if (isMonostable() && stateResult == PRESSED) {
+        if (clickCounter <= 1 && holdTimeMs > 0 &&
+            timeDelta > (holdTimeMs +
+                         static_cast<uint32_t>(holdSend) * repeatOnHoldMs) &&
+            (runtimeFlags.repeatOnHoldEnabled || holdSend == 0)) {
+          if (runActionWithActionTriggerPolicy(ON_HOLD)) return;
+          ++holdSend;
+        }
+        if (clickCounter >= 1 && stateResult == PRESSED &&
+            timeDelta > (holdTimeMs ? holdTimeMs : 3 * multiclickTimeMs)) {
+          clickCounter = 0;
+        }
+      } else if (stateResult == RELEASED || isBistable() || isMotionSensor() ||
+                 isCentral()) {
+        // for all button types (monostable, bistable, motion sensor, and
+        // central)
+        if (multiclickTimeMs == 0) {
+          holdSend = 0;
+          clickCounter = 0;
+        }
+        if (multiclickTimeMs > 0 &&
+            (timeDelta > multiclickTimeMs ||
+             maxMulticlickValueConfigured == clickCounter)) {
+          if (holdSend == 0 && clickCounter != 255) {
+            switch (clickCounter) {
+              case 1: {
+                if (deferConditionalEdges) {
+                  if (runActionWithActionTriggerPolicy(
+                          stateResult == PRESSED ? CONDITIONAL_ON_PRESS
+                                                 : CONDITIONAL_ON_RELEASE)) {
+                    return;
+                  }
+                }
+                if (runActionWithActionTriggerPolicy(ON_CLICK_1)) return;
+                break;
+              }
+              case 2:
+                if (runActionWithActionTriggerPolicy(ON_CLICK_2)) return;
+                break;
+              case 3:
+                if (runActionWithActionTriggerPolicy(ON_CLICK_3)) return;
+                break;
+              case 4:
+                if (runActionWithActionTriggerPolicy(ON_CLICK_4)) return;
+                break;
+              case 5:
+                if (runActionWithActionTriggerPolicy(ON_CLICK_5)) return;
+                break;
+              case 6:
+                if (runActionWithActionTriggerPolicy(ON_CLICK_6)) return;
+                break;
+              case 7:
+                if (runActionWithActionTriggerPolicy(ON_CLICK_7)) return;
+                break;
+              case 8:
+                if (runActionWithActionTriggerPolicy(ON_CLICK_8)) return;
+                break;
+              case 9:
+                if (runActionWithActionTriggerPolicy(ON_CLICK_9)) return;
+                break;
+              case 10:
+                if (runActionWithActionTriggerPolicy(ON_CLICK_10)) return;
+                if (runActionWithActionTriggerPolicy(ON_CRAZY_CLICKER)) return;
+                break;
+            }
+          } else {
+            switch (clickCounter) {
+              // LONG click is send for clicking after HOLD
+              case 0:
+                if (runActionWithActionTriggerPolicy(ON_LONG_CLICK_0)) return;
+                break;
+              case 1:
+                if (runActionWithActionTriggerPolicy(ON_LONG_CLICK_1)) return;
+                break;
+              case 2:
+                if (runActionWithActionTriggerPolicy(ON_LONG_CLICK_2)) return;
+                break;
+              case 3:
+                if (runActionWithActionTriggerPolicy(ON_LONG_CLICK_3)) return;
+                break;
+              case 4:
+                if (runActionWithActionTriggerPolicy(ON_LONG_CLICK_4)) return;
+                break;
+              case 5:
+                if (runActionWithActionTriggerPolicy(ON_LONG_CLICK_5)) return;
+                break;
+              case 6:
+                if (runActionWithActionTriggerPolicy(ON_LONG_CLICK_6)) return;
+                break;
+              case 7:
+                if (runActionWithActionTriggerPolicy(ON_LONG_CLICK_7)) return;
+                break;
+              case 8:
+                if (runActionWithActionTriggerPolicy(ON_LONG_CLICK_8)) return;
+                break;
+              case 9:
+                if (runActionWithActionTriggerPolicy(ON_LONG_CLICK_9)) return;
+                break;
+              case 10:
+                if (runActionWithActionTriggerPolicy(ON_LONG_CLICK_10)) return;
+                break;
+            }
+          }
+          clickCounter = 255;
+          if (timeDelta > multiclickTimeMs ||
+              (deferConditionalEdges && maxMulticlickValueConfigured == 1)) {
+            // With no higher clicks configured, accept the next edge right
+            // away. In particular, never swallow the directional stop.
+            holdSend = 0;
+            clickCounter = 0;
+          }
+        }
+      }
+    } else if (runtimeFlags.allowHoldOnPowerOn) {
+      if (isMonostable() && stateResult == PRESSED) {
+        if (clickCounter <= 1 && holdTimeMs > 0 &&
+            timeDelta > (holdTimeMs +
+                         static_cast<uint32_t>(holdSend) * repeatOnHoldMs) &&
+            (runtimeFlags.repeatOnHoldEnabled || holdSend == 0)) {
+          if (runActionWithActionTriggerPolicy(ON_HOLD)) return;
+          ++holdSend;
+        }
+        if (clickCounter >= 1 && stateResult == PRESSED &&
+            timeDelta > multiclickTimeMs) {
+          clickCounter = 0;
+        }
+      }
+    }
+  }
+}
+
+void Button::addAction(uint16_t action, ActionHandler *client, uint16_t event,
+      bool alwaysEnabled) {
+  SimpleButton::addAction(action, client, event, alwaysEnabled);
+  evaluateMaxMulticlickValue();
+}
+
+void Button::disableAction(int32_t action,
+                           ActionHandler *client,
+                           int32_t event) {
+  SimpleButton::disableAction(action, client, event);
+  evaluateMaxMulticlickValue();
+}
+
+void Button::enableAction(int32_t action,
+                          ActionHandler *client,
+                          int32_t event) {
+  SimpleButton::enableAction(action, client, event);
+  evaluateMaxMulticlickValue();
+}
+
+void Button::setConditionalActionsOnClick1(bool enabled) {
+  if (runtimeFlags.conditionalActionsOnClick1 != enabled) {
+    // Reconfiguration must not replay an edge collected under the old policy.
+    clickCounter = 0;
+    holdSend = 0;
+  }
+  runtimeFlags.conditionalActionsOnClick1 = enabled;
+  evaluateMaxMulticlickValue();
+}
+
+void Button::evaluateMaxMulticlickValue() {
+  auto ptr = ActionHandlerClient::begin;
+  uint8_t clickCounterValueForEvent = 0;
+  maxMulticlickValueConfigured =
+      runtimeFlags.conditionalActionsOnClick1 ? 1 : 0;
+  while (ptr) {
+    if (ptr->trigger == this && ptr->isEnabled()) {
+      switch (ptr->onEvent) {
+        case ON_LONG_CLICK_1:
+        case ON_CLICK_1: {
+          clickCounterValueForEvent = 1;
+          break;
+        }
+        case ON_LONG_CLICK_2:
+        case ON_CLICK_2: {
+          clickCounterValueForEvent = 2;
+          break;
+        }
+        case ON_LONG_CLICK_3:
+        case ON_CLICK_3: {
+          clickCounterValueForEvent = 3;
+          break;
+        }
+        case ON_LONG_CLICK_4:
+        case ON_CLICK_4: {
+          clickCounterValueForEvent = 4;
+          break;
+        }
+        case ON_LONG_CLICK_5:
+        case ON_CLICK_5: {
+          clickCounterValueForEvent = 5;
+          break;
+        }
+        case ON_LONG_CLICK_6:
+        case ON_CLICK_6: {
+          clickCounterValueForEvent = 6;
+          break;
+        }
+        case ON_LONG_CLICK_7:
+        case ON_CLICK_7: {
+          clickCounterValueForEvent = 7;
+          break;
+        }
+        case ON_LONG_CLICK_8:
+        case ON_CLICK_8: {
+          clickCounterValueForEvent = 8;
+          break;
+        }
+        case ON_LONG_CLICK_9:
+        case ON_CLICK_9: {
+          clickCounterValueForEvent = 9;
+          break;
+        }
+        case ON_CRAZY_CLICKER:
+        case ON_LONG_CLICK_10:
+        case ON_CLICK_10: {
+          clickCounterValueForEvent = 10;
+          break;
+        }
+      }
+    }
+    ptr = ptr->next;
+
+    if (clickCounterValueForEvent > maxMulticlickValueConfigured) {
+      maxMulticlickValueConfigured = clickCounterValueForEvent;
+    }
+  }
+}
+
+void Button::addAction(uint16_t action, ActionHandler &client, uint16_t event,
+      bool alwaysEnabled) {
+  Button::addAction(action, &client, event, alwaysEnabled);
+}
+
+void Button::setHoldTime(unsigned int timeMs) {
+  if (timeMs != 0) {
+    if (timeMs < kButtonTimingMinMs) {
+      timeMs = kButtonTimingMinMs;
+    } else if (timeMs > kButtonTimingMaxMs) {
+      timeMs = kButtonTimingMaxMs;
+    }
+  }
+  holdTimeMs = timeMs;
+  SUPLA_LOG_DEBUG("Button[%d] setHoldTime: %u", getButtonNumber(), holdTimeMs);
+}
+
+void Button::setMulticlickTime(unsigned int timeMs, bool bistableButton) {
+  if (timeMs != 0) {
+    if (timeMs < kButtonTimingMinMs) {
+      timeMs = kButtonTimingMinMs;
+    } else if (timeMs > kButtonTimingMaxMs) {
+      timeMs = kButtonTimingMaxMs;
+    }
+  }
+  multiclickTimeMs = timeMs;
+  if (bistableButton) {
+    buttonType = ButtonType::BISTABLE;
+  }
+  SUPLA_LOG_DEBUG(
+      "Button[%d] setMulticlickTime: %u", getButtonNumber(), timeMs);
+}
+
+void Button::repeatOnHoldEvery(unsigned int timeMs) {
+  if (timeMs > UINT16_MAX) {
+    timeMs = UINT16_MAX;
+  }
+  repeatOnHoldMs = timeMs;
+  runtimeFlags.repeatOnHoldEnabled = (timeMs > 0);
+}
+
+bool Button::isBistable() const {
+  return buttonType == ButtonType::BISTABLE;
+}
+
+bool Button::isMonostable() const {
+  return buttonType == ButtonType::MONOSTABLE;
+}
+bool Button::isMotionSensor() const {
+  return buttonType == ButtonType::MOTION_SENSOR;
+}
+
+bool Button::isCentral() const {
+  return buttonType == ButtonType::CENTRAL_CONTROL;
+}
+
+void Button::onLoadConfig(SuplaDeviceClass *sdc) {
+  if (sdc && sdc->getDeviceMode() == Supla::DEVICE_MODE_TEST) {
+    SUPLA_LOG_DEBUG("Button[%d] test mode", getButtonNumber());
+    setButtonType(ButtonType::MONOSTABLE);
+    return;
+  }
+  if (onLoadConfigType == OnLoadConfigType::DONT_LOAD_CONFIG) {
+    SUPLA_LOG_DEBUG("Button[%d] don't load config", getButtonNumber());
+    return;
+  }
+
+  auto cfg = Supla::Storage::ConfigInstance();
+  if (cfg) {
+    char key[SUPLA_CONFIG_MAX_KEY_SIZE] = {};
+    Supla::Config::generateKey(
+        key, getButtonNumber(), Supla::ConfigTag::BtnTypeTag);
+    int32_t btnTypeValue = 0;
+    bool saveConfig = false;
+
+    if (cfg->getInt32(key, &btnTypeValue)) {
+      switch (btnTypeValue) {
+        case 0: {
+          setButtonType(ButtonType::MONOSTABLE);
+          break;
+        }
+        case 1: {
+          setButtonType(ButtonType::BISTABLE);
+          break;
+        }
+        case 2: {
+          setButtonType(ButtonType::MOTION_SENSOR);
+          break;
+        }
+        case 3: {
+          setButtonType(ButtonType::CENTRAL_CONTROL);
+          break;
+        }
+        default: {
+          SUPLA_LOG_WARNING("Button[%d] unknown button type in cfg: %d",
+                            getButtonNumber(),
+                            btnTypeValue);
+          break;
+        }
+      }
+    } else {
+      saveConfig = true;
+      if (isMotionSensor()) {
+        cfg->setInt32(key, 2);
+      } else if (isBistable()) {
+        cfg->setInt32(key, 1);
+      } else if (isCentral()) {
+        cfg->setInt32(key, 3);
+      } else {
+        cfg->setInt32(key, 0);
+      }
+    }
+
+    uint32_t multiclickTimeMsValue = 0;
+    if (cfg->getUInt32(Supla::ConfigTag::BtnMulticlickTag,
+                       &multiclickTimeMsValue)) {
+      if (multiclickTimeMsValue < kButtonTimingMinMs) {
+        multiclickTimeMsValue = kButtonTimingMinMs;
+      }
+      if (multiclickTimeMsValue > kButtonTimingMaxMs) {
+        multiclickTimeMsValue = kButtonTimingMaxMs;
+      }
+      setMulticlickTime(multiclickTimeMsValue, isBistable());
+    } else if (multiclickTimeMs > 0) {
+      cfg->setUInt32(Supla::ConfigTag::BtnMulticlickTag, multiclickTimeMs);
+      saveConfig = true;
+    }
+
+    uint32_t holdTimeMsValue = CFG_MODE_ON_HOLD_TIME;
+    if (cfg->getUInt32(Supla::ConfigTag::BtnHoldTag, &holdTimeMsValue)) {
+      if (holdTimeMsValue < kButtonTimingMinMs) {
+        holdTimeMsValue = kButtonTimingMinMs;
+      }
+      if (holdTimeMsValue > kButtonTimingMaxMs) {
+        holdTimeMsValue = kButtonTimingMaxMs;
+      }
+      setHoldTime(holdTimeMsValue);
+    } else if (holdTimeMs > 0) {
+      cfg->setUInt32(Supla::ConfigTag::BtnHoldTag, holdTimeMs);
+      saveConfig = true;
+    }
+
+    if (onLoadConfigType == OnLoadConfigType::LOAD_FULL_CONFIG) {
+      int32_t useInputAsConfigButtonValue = 0;
+      Supla::Config::generateKey(
+          key, getButtonNumber(), Supla::ConfigTag::BtnConfigTag);
+      if (!cfg->getInt32(key, &useInputAsConfigButtonValue)) {
+        cfg->getInt32(Supla::ConfigTag::BtnConfigTag,
+                      &useInputAsConfigButtonValue);
+      }
+
+      if (sdc && !isCentral() && useInputAsConfigButtonValue == 0) {
+        // ON is "0", which is default value
+        SUPLA_LOG_DEBUG("Button[%d] enabling IN as config button",
+            getButtonNumber());
+        runtimeFlags.configButton = true;
+        addAction(Supla::ENTER_CONFIG_MODE_OR_RESET_TO_FACTORY,
+                  sdc,
+                  Supla::ON_CLICK_10,
+                  true);
+        addAction(
+            Supla::LEAVE_CONFIG_MODE_AND_RESET, sdc, Supla::ON_CLICK_1, true);
+      }
+    }
+
+    if (saveConfig) {
+      cfg->saveWithDelay(500);
+    }
+  }
+}
+
+void Button::configureAsConfigButton(SuplaDeviceClass *sdc) {
+  SUPLA_LOG_DEBUG("Button[%d]::configureAsConfigButton", getButtonNumber());
+  runtimeFlags.configButton = true;
+  dontUseOnLoadConfig();
+  setHoldTime(CFG_MODE_ON_HOLD_TIME);
+  setMulticlickTime(300, isBistable());
+  addAction(Supla::ENTER_CONFIG_MODE_OR_RESET_TO_FACTORY,
+                sdc,
+                Supla::ON_HOLD,
+                true);
+  addAction(
+      Supla::LEAVE_CONFIG_MODE_AND_RESET, sdc, Supla::ON_CLICK_1, true);
+}
+
+bool Button::disableActionsInConfigMode() {
+  return runtimeFlags.configButton;
+}
+
+void Button::setButtonType(const ButtonType type) {
+  buttonType = type;
+  SUPLA_LOG_DEBUG("Button[%d] setButtonType: %s (%d)",
+                  getButtonNumber(),
+                  getButtonTypeName(type),
+                  type);
+}
+
+uint8_t Button::getMaxMulticlickValue() {
+  return maxMulticlickValueConfigured;
+}
+
+int8_t Button::getButtonNumber() const {
+  return buttonNumber;
+}
+
+void Button::setButtonNumber(int8_t btnNumber) {
+  buttonNumber = btnNumber;
+}
+
+void Button::dontUseOnLoadConfig() {
+  onLoadConfigType = OnLoadConfigType::DONT_LOAD_CONFIG;
+}
+
+void Button::setOnLoadConfigType(OnLoadConfigType type) {
+  onLoadConfigType = type;
+}
+
+void Button::disableRepeatOnHold(uint32_t threshold) {
+  if (threshold == 0 || repeatOnHoldMs < threshold) {
+    runtimeFlags.repeatOnHoldEnabled = false;
+  }
+}
+
+void Button::enableRepeatOnHold() {
+  runtimeFlags.repeatOnHoldEnabled = (repeatOnHoldMs > 0);
+}
+
+void Button::disableButton() {
+  SUPLA_LOG_DEBUG("Button[%d]: disabling button", getButtonNumber());
+  runtimeFlags.disabled = true;
+}
+
+void Button::enableButton() {
+  SUPLA_LOG_DEBUG("Button[%d]: enabling button", getButtonNumber());
+  runtimeFlags.disabled = false;
+  runtimeFlags.suppressActionsUntilRelease = state.isPressedOrPending();
+  clickCounter = 0;
+  holdSend = 0;
+  lastStateChangeMs = millis();
+}
+
+void Button::setActionTriggerModeLocked(bool locked) {
+  setActionTriggerModeLocked(locked,
+                             runtimeFlags.actionTriggerLocalUnlockAllowed,
+                             runtimeFlags
+                                 .keepConfigButtonTriggerAlwaysAvailable);
+}
+
+void Button::setActionTriggerModeLocked(
+    bool locked,
+    bool localUnlockAllowed,
+    bool keepConfigButtonTriggerAlwaysAvailableValue) {
+  if (runtimeFlags.actionTriggerModeLocked == locked) {
+    const bool policyChanged =
+        runtimeFlags.actionTriggerLocalUnlockAllowed != localUnlockAllowed ||
+        runtimeFlags.keepConfigButtonTriggerAlwaysAvailable !=
+            keepConfigButtonTriggerAlwaysAvailableValue;
+    runtimeFlags.actionTriggerLocalUnlockAllowed = localUnlockAllowed;
+    runtimeFlags.keepConfigButtonTriggerAlwaysAvailable =
+        keepConfigButtonTriggerAlwaysAvailableValue;
+    if (policyChanged && state.isPressedOrPending()) {
+      runtimeFlags.actionTriggerSuppressActionsUntilRelease = true;
+      clickCounter = 0;
+      holdSend = 0;
+      runtimeFlags.waitingForRelease = false;
+      lastStateChangeMs = millis();
+    }
+    return;
+  }
+  runtimeFlags.actionTriggerModeLocked = locked;
+  runtimeFlags.actionTriggerLocalUnlockAllowed = localUnlockAllowed;
+  runtimeFlags.keepConfigButtonTriggerAlwaysAvailable =
+      keepConfigButtonTriggerAlwaysAvailableValue;
+  runtimeFlags.actionTriggerSuppressActionsUntilRelease =
+      state.isPressedOrPending() || runtimeFlags.actionTriggerDispatching;
+  clickCounter = 0;
+  holdSend = 0;
+  runtimeFlags.waitingForRelease = false;
+  lastStateChangeMs = millis();
+}
+
+void Button::handleAction(int event, int action) {
+  (void)(event);
+  switch (action) {
+    case Supla::TURN_ON:
+    case Supla::ENABLE: {
+      enableButton();
+      break;
+    }
+    case Supla::TURN_OFF:
+    case Supla::DISABLE: {
+      disableButton();
+      break;
+    }
+    case Supla::TOGGLE: {
+      if (runtimeFlags.disabled) {
+        enableButton();
+      } else {
+        disableButton();
+      }
+      break;
+    }
+  }
+}
+
+uint32_t Button::getLastStateChange() const {
+  return lastStateChangeMs;
+}
+
+void Button::waitForRelease() {
+  runtimeFlags.waitingForRelease = true;
+}
+
+
+const char *Button::getButtonTypeName(ButtonType type) const {
+  switch (type) {
+    case ButtonType::MONOSTABLE:
+      return "monostable";
+    case ButtonType::BISTABLE:
+      return "bistable";
+    case ButtonType::CENTRAL_CONTROL:
+      return "central";
+    case ButtonType::MOTION_SENSOR:
+      return "motion sensor";
+  }
+  return "unknown";
+}

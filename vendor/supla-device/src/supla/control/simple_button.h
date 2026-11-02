@@ -1,0 +1,76 @@
+// SPDX-FileCopyrightText: AC SOFTWARE SP. Z O.O.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#ifndef SRC_SUPLA_CONTROL_SIMPLE_BUTTON_H_
+#define SRC_SUPLA_CONTROL_SIMPLE_BUTTON_H_
+
+#include <stdint.h>
+
+#include "../io.h"
+#include "../element.h"
+#include "../events.h"
+#include "../local_action.h"
+
+namespace Supla {
+namespace Control {
+
+enum StateResults { PRESSED, RELEASED, TO_PRESSED, TO_RELEASED };
+
+class ButtonState {
+ public:
+  explicit ButtonState(Supla::Io::IoPin inputPin);
+  ButtonState(Supla::Io::Base *io, int pin, bool pullUp, bool invertLogic);
+  ButtonState(int pin, bool pullUp, bool invertLogic);
+  enum StateResults update();
+  enum StateResults getLastState() const;
+  bool isPressedOrPending() const;
+  void init(int buttonNumber);
+
+  void setSwNoiseFilterDelay(unsigned int newDelayMs);
+  void setDebounceDelay(unsigned int newDelayMs);
+  int getGpio() const;
+
+  bool isReady() const;
+
+ protected:
+  int valueOnPress() const;
+
+  Supla::Io::IoPin inputPin;
+
+  uint16_t debounceDelayMs = 50;
+  uint16_t swNoiseFilterDelayMs = 20;
+  uint32_t debounceTimestampMs = 0;
+  uint32_t filterTimestampMs = 0;
+  int8_t newStatusCandidate = 0;
+  int8_t prevState = -1;
+};
+
+class SimpleButton : public Element, public LocalAction {
+ public:
+  explicit SimpleButton(Supla::Io::IoPin inputPin);
+  explicit SimpleButton(Supla::Io::Base *io,
+                        int pin,
+                        bool pullUp = false,
+                        bool invertLogic = false);
+  explicit SimpleButton(int pin, bool pullUp = false, bool invertLogic = false);
+
+  void onTimer() override;
+  void onInit() override;
+  void setSwNoiseFilterDelay(unsigned int newDelayMs);
+  void setDebounceDelay(unsigned int newDelayMs);
+
+  enum StateResults getLastState() const;
+
+  bool isReady() const;
+
+ protected:
+  // Returns unique button number (current implementation returns configured
+  // GPIO)
+  virtual int8_t getButtonNumber() const;
+  ButtonState state;
+};
+
+};  // namespace Control
+};  // namespace Supla
+
+#endif  // SRC_SUPLA_CONTROL_SIMPLE_BUTTON_H_

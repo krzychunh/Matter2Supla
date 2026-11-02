@@ -1,0 +1,177 @@
+// SPDX-FileCopyrightText: AC SOFTWARE SP. Z O.O.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "blinking_led.h"
+
+#include <supla/auto_lock.h>
+#include <supla/log_wrapper.h>
+#include <supla/mutex.h>
+#include <supla/time.h>
+
+using Supla::Control::BlinkingLed;
+
+BlinkingLed::BlinkingLed(Supla::Io::IoPin outPin) : outPin(outPin) {
+  this->outPin.setMode(OUTPUT);
+  mutex = Supla::Mutex::Create();
+}
+
+BlinkingLed::BlinkingLed(Supla::Io::IoPin outPin, bool invert)
+    : BlinkingLed(outPin) {
+  this->outPin.setActiveHigh(!invert);
+}
+
+BlinkingLed::BlinkingLed(Supla::Io::Base *io, uint8_t outPin, bool invert)
+    : BlinkingLed(Supla::Io::IoPin(outPin, io), invert) {
+}
+
+BlinkingLed::BlinkingLed(uint8_t outPin, bool invert)
+    : BlinkingLed(Supla::Io::IoPin(outPin), invert) {
+}
+
+BlinkingLed::~BlinkingLed() {
+  delete mutex;
+}
+
+void BlinkingLed::onInit() {
+  Supla::AutoLock autoLock(mutex);
+  if (state == NOT_INITIALIZED) {
+    turnOff();
+  }
+  outPin.pinMode();
+  lastUpdate = 0;
+  updatePin();
+}
+
+void BlinkingLed::onTimer() {
+  Supla::AutoLock autoLock(mutex);
+  updatePin();
+}
+
+void BlinkingLed::setInvertedLogic(bool invertedLogic) {
+  Supla::AutoLock autoLock(mutex);
+  outPin.setActiveHigh(!invertedLogic);
+  updatePin();
+}
+
+void BlinkingLed::setAlwaysOffSequence() {
+  setCustomSequence(0, 1000);
+}
+
+void BlinkingLed::setAlwaysOnSequence() {
+  setCustomSequence(1000, 0);
+}
+
+void BlinkingLed::turnOn() {
+  lastUpdate = millis();
+  state = ON;
+  outPin.writeActive();
+  auto copy = copyStateTo;
+  if (copy) {
+    copy->turnOn();
+  }
+}
+
+void BlinkingLed::turnOff() {
+  lastUpdate = millis();
+  state = OFF;
+  outPin.writeInactive();
+  auto copy = copyStateTo;
+  if (copy) {
+    copy->turnOff();
+  }
+}
+
+void BlinkingLed::updatePin() {
+  if (!enabled) {
+    return;
+  }
+  if (onDuration == 0 || offDuration == 0) {
+    if ((state == ON || state == NOT_INITIALIZED) && onDuration == 0) {
+      turnOff();
+    }
+    if ((state == OFF || state == NOT_INITIALIZED) && offDuration == 0) {
+      turnOn();
+    }
+    return;
+  }
+
+  if (state == ON && millis() - lastUpdate > onDuration) {
+    turnOff();
+  } else if (state == OFF) {
+    if (onLimit > 0 && pauseDuration > 0 && onLimitCounter == 0 &&
+        millis() - lastUpdate < pauseDuration && lastUpdate != 0) {
+      return;
+    }
+    if (millis() - lastUpdate > offDuration || lastUpdate == 0) {
+      if (onLimit > 0 && pauseDuration > 0 && onLimitCounter == 0) {
+        onLimitCounter = onLimit;
+        if (repeatLimit > 0) {
+          if (repeatLimit == 1) {
+            onDuration = 0;
+            offDuration = 1000;
+            onLimit = 0;
+            return;
+          }
+          repeatLimit--;
+        }
+      }
+      turnOn();
+      if (onLimitCounter > 0) {
+        onLimitCounter--;
+      }
+    }
+  }
+}
+
+void BlinkingLed::setCustomSequence(uint32_t onDurationMs,
+                                    uint32_t offDurationMs,
+                                    uint32_t pauseDurrationMs,
+                                    uint8_t onLimit,
+                                    uint8_t repeatLimit,
+                                    bool startWithOff) {
+  Supla::AutoLock autoLock(mutex);
+  enable();
+  onDuration = onDurationMs;
+  offDuration = offDurationMs;
+  pauseDuration = pauseDurrationMs;
+  this->onLimit = onLimit;
+  onLimitCounter = onLimit;
+  this->repeatLimit = repeatLimit;
+  lastUpdate = 0;
+  autoLock.unlock();
+  if (startWithOff && offDuration > 0) {
+    turnOff();
+  } else if (onDuration > 0) {
+    turnOn();
+  } else {
+    turnOff();
+  }
+  updatePin();
+}
+
+void BlinkingLed::setCopyStateTo(BlinkingLed *led) {
+  for (auto target = led; target != nullptr; target = target->copyStateTo) {
+    if (target == this) {
+      return;
+    }
+  }
+
+  copyStateTo = led;
+
+  if (copyStateTo != nullptr) {
+    copyStateTo->disable();
+    updatePin();
+  }
+}
+
+void BlinkingLed::disable() {
+  enabled = false;
+}
+
+void BlinkingLed::enable() {
+  enabled = true;
+}
+
+void BlinkingLed::setInvert(bool newInvert) {
+  outPin.setActiveHigh(!newInvert);
+}

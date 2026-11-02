@@ -1,0 +1,102 @@
+// SPDX-FileCopyrightText: AC SOFTWARE SP. Z O.O.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#ifndef SRC_SUPLA_DEVICE_FACTORY_TEST_H_
+#define SRC_SUPLA_DEVICE_FACTORY_TEST_H_
+
+#include <supla/action_handler.h>
+#include <supla/element.h>
+
+class SuplaDeviceClass;
+
+namespace Supla {
+
+enum TestStage {
+  TestStage_None = 0,
+  TestStage_Init = 1,
+  TestStage_RegisteredAndReady = 2,
+  TestStage_WaitForCfgButton = 3,
+  TestStage_Failed = 4,
+  TestStage_Success = 5
+};
+
+enum TestActionType {
+  TestAction_CfgButtonOnPress = 11000,
+  TestAction_DeviceStatusChange = 11101
+};
+
+namespace Device {
+
+class FactoryTest : public Supla::ActionHandler, public Supla::Element {
+ public:
+  using InsecureOptions = uint32_t;
+
+  // Allows legacy factory behavior where the device starts in config mode on
+  // factory defaults. Risk: a shipped or reset device exposes the config AP
+  // and local web UI before the user completes provisioning.
+  static constexpr InsecureOptions AllowStartInCfgMode = 1u << 0;
+
+  // Allows factory configuration to remain without encryption. Risk: device
+  // configuration secrets are stored in a weaker or plaintext form.
+  static constexpr InsecureOptions AllowConfigEncryptionDisabled = 1u << 1;
+
+  // Allows missing or invalid embedded HTTPS certificates. Risk: the local web
+  // UI cannot provide authenticated TLS and may fall back to weaker transport.
+  static constexpr InsecureOptions AllowMissingHttpsCertificates = 1u << 2;
+
+  // Allows security logging to stay disabled. Risk: factory/security audit
+  // evidence is missing, which weakens detection and incident investigation.
+  static constexpr InsecureOptions AllowSecurityLogDisabled = 1u << 3;
+
+   /**
+    * @brief Construct a new Factory Test object
+    *
+    * @param sdc SuplaDeviceClass pointer
+    * @param timeoutS test timeout, when set to 0 -> run only self-test
+    */
+  FactoryTest(SuplaDeviceClass *sdc, uint32_t timeoutS);
+  virtual ~FactoryTest();
+
+  void onInit() override;
+  void iterateAlways() override;
+  void handleAction(int event, int action) override;
+
+  virtual int16_t getManufacturerId();
+  virtual void waitForConfigButtonPress();
+  virtual bool checkTestStep();
+
+  void setTestFailed(int reason);
+  void setTestFinished();
+  Supla::TestStage getTestStage() const;
+  bool hasFailed() const;
+  int getFailReason() const;
+
+  void dontCheckAutomaticFirmwareUpdate();
+
+  // Set the factory-test security policy once before any FactoryTest instance
+  // is created. Both the short-lived self-test and the persistent test-mode
+  // tester consume the same static options.
+  static void setInsecureOptions(InsecureOptions options);
+  static InsecureOptions getInsecureOptions();
+
+ protected:
+  bool testFailed = false;
+  bool testFinished = false;
+  bool waitForRegisteredAndReady = true;
+  bool testingMachineEnabled = true;
+  SuplaDeviceClass *sdc = nullptr;
+  uint32_t timeoutS = 30;
+  uint32_t initTimestamp = 0;
+  Supla::TestStage testStage = Supla::TestStage_None;
+  int testStep = 0;
+  // fill fail reason for devices that can show it during the test
+  // Use values >= 100 for device specific failures
+  int failReason = 0;
+  bool checkAutomaticFirmwareUpdate = true;
+
+  static InsecureOptions insecureOptions;
+};
+
+}  // namespace Device
+}  // namespace Supla
+#endif  // SRC_SUPLA_DEVICE_FACTORY_TEST_H_

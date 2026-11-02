@@ -1,0 +1,516 @@
+// SPDX-FileCopyrightText: AC SOFTWARE SP. Z O.O.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "fronius.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <supla/log_wrapper.h>
+#include <supla/time.h>
+
+#include "inverter_parser.h"
+#include "supla/network/client.h"
+
+#define FRONIUS_SINGLE_PHASE_INVERTER 0
+#define FRONIUS_THREE_PHASE_INVERTER  1
+#define FRONIUS_THREE_PHASE_METER     2
+
+namespace Supla {
+namespace PV {
+
+bool Fronius::isDeviceTypeSupported(int deviceType) {
+  return deviceType == FRONIUS_SINGLE_PHASE_INVERTER ||
+         deviceType == FRONIUS_THREE_PHASE_INVERTER ||
+         deviceType == FRONIUS_THREE_PHASE_METER;
+}
+
+Fronius::Fronius(IPAddress ip, int port, int deviceId, int deviceType)
+    : ip(ip), port(port),
+      deviceType(isDeviceTypeSupported(deviceType)
+                     ? deviceType
+                     : FRONIUS_SINGLE_PHASE_INVERTER),
+      deviceId(deviceId) {
+  if (!isDeviceTypeSupported(deviceType)) {
+    SUPLA_LOG_ERROR("Unsupported Fronius device type: %d", deviceType);
+  }
+  if (this->deviceType == FRONIUS_SINGLE_PHASE_INVERTER) {
+    extChannel.setFlag(SUPLA_CHANNEL_FLAG_PHASE2_UNSUPPORTED);
+    extChannel.setFlag(SUPLA_CHANNEL_FLAG_PHASE3_UNSUPPORTED);
+  }
+  refreshRateSec = 15;
+  client = Supla::ClientBuilder();
+}
+
+Fronius::~Fronius() {
+  delete client;
+  client = nullptr;
+}
+
+void Fronius::getSinglePhaseInverterValues(char* varName, char* varValue) {
+  if (strncmp(varName, "TOTAL_ENERGY", strlen("TOTAL_ENERGY")) == 0) {
+    if (!detail::parseInverterValue(varValue, 100, &totalGeneratedEnergy)) {
+      return;
+    }
+    /* received data from inverter, so increment counter
+     to check later if inverter is up and returned all
+     data or is down and returned only total generated energy */
+    invDisabledCounter++;
+  } else if (strncmp(varName, "PAC", strlen("PAC")) == 0) {
+    detail::parseInverterValue(varValue, 100000, &currentActivePower[0]);
+  } else if (strncmp(varName, "FAC", strlen("FAC")) == 0) {
+    if (!detail::parseInverterValue(varValue, 100, &currentFreq)) {
+      return;
+    }
+    // assume that inverter is up if frequency is present
+    invDisabledCounter = 0;
+  } else if (strncmp(varName, "IAC", strlen("IAC")) == 0) {
+    detail::parseInverterValue(varValue, 1000, &currentCurrent[0]);
+  } else if (strncmp(varName, "UAC", strlen("UAC")) == 0) {
+    detail::parseInverterValue(varValue, 100, &currentVoltage[0]);
+  }
+}
+
+void Fronius::getThreePhaseInverterValues(char* varName, char* varValue) {
+  if (strncmp(varName, "TOTAL_ENERGY", strlen("TOTAL_ENERGY")) == 0) {
+    if (!detail::parseInverterValue(varValue, 100, &totalGeneratedEnergy)) {
+      return;
+    }
+    /* received data from inverter, so increment counter
+     to check later if inverter is up and returned all
+     data or is down and returned only total generated energy */
+    invDisabledCounter++;
+  } else if (strncmp(varName, "PAC", strlen("PAC")) == 0) {
+    detail::parseInverterValue(varValue, 100000, &currentActivePower[0]);
+  } else if (strncmp(varName, "FAC", strlen("FAC")) == 0) {
+    if (!detail::parseInverterValue(varValue, 100, &currentFreq)) {
+      return;
+    }
+    // assume that inverter is up if frequency is present
+    invDisabledCounter = 0;
+  } else if (strncmp(varName, "IAC_L1", strlen("IAC_L1")) == 0) {
+    detail::parseInverterValue(varValue, 1000, &currentCurrent[0]);
+  } else if (strncmp(varName, "IAC_L2", strlen("IAC_L2")) == 0) {
+    detail::parseInverterValue(varValue, 1000, &currentCurrent[1]);
+  } else if (strncmp(varName, "IAC_L3", strlen("IAC_L3")) == 0) {
+    detail::parseInverterValue(varValue, 1000, &currentCurrent[2]);
+  } else if (strncmp(varName, "UAC_L1", strlen("UAC_L1")) == 0) {
+    detail::parseInverterValue(varValue, 100, &currentVoltage[0]);
+  } else if (strncmp(varName, "UAC_L2", strlen("UAC_L2")) == 0) {
+    detail::parseInverterValue(varValue, 100, &currentVoltage[1]);
+  } else if (strncmp(varName, "UAC_L3", strlen("UAC_L3")) == 0) {
+    detail::parseInverterValue(varValue, 100, &currentVoltage[2]);
+  }
+}
+
+void Fronius::getThreePhaseMeterValues(char* varName, char* varValue) {
+  if (strncmp(varName, "Current_AC_Phase_1", strlen("Current_AC_Phase_1")) ==
+      0) {
+    detail::parseInverterValue(varValue, 1000, &currentCurrent[0]);
+  } else if (strncmp(varName,
+                     "Current_AC_Phase_2",
+                     strlen("Current_AC_Phase_2")) == 0) {
+    detail::parseInverterValue(varValue, 1000, &currentCurrent[1]);
+  } else if (strncmp(varName,
+                     "Current_AC_Phase_3",
+                     strlen("Current_AC_Phase_3")) == 0) {
+    detail::parseInverterValue(varValue, 1000, &currentCurrent[2]);
+  } else if (strncmp(varName,
+                     "EnergyReactive_VArAC_Sum_Consumed",
+                     strlen("EnergyReactive_VArAC_Sum_Consumed")) == 0) {
+    detail::parseInverterValue(varValue, 100, &fwdReactEnergy);
+  } else if (strncmp(varName,
+                     "EnergyReactive_VArAC_Sum_Produced",
+                     strlen("EnergyReactive_VArAC_Sum_Produced")) == 0) {
+    detail::parseInverterValue(varValue, 100, &rvrReactEnergy);
+  } else if (strncmp(varName,
+                     "EnergyReal_WAC_Sum_Consumed",
+                     strlen("EnergyReal_WAC_Sum_Consumed")) == 0) {
+    detail::parseInverterValue(varValue, 100, &fwdActEnergy);
+  } else if (strncmp(varName,
+                     "EnergyReal_WAC_Sum_Produced",
+                     strlen("EnergyReal_WAC_Sum_Produced")) == 0) {
+    detail::parseInverterValue(varValue, 100, &rvrActEnergy);
+  } else if (strncmp(varName,
+                     "Frequency_Phase_Average",
+                     strlen("Frequency_Phase_Average")) == 0) {
+    detail::parseInverterValue(varValue, 100, &currentFreq);
+  } else if (strncmp(varName,
+                     "PowerApparent_S_Phase_1",
+                     strlen("PowerApparent_S_Phase_1")) == 0) {
+    detail::parseInverterValue(varValue, 100000, &currentApparentPower[0]);
+  } else if (strncmp(varName,
+                     "PowerApparent_S_Phase_2",
+                     strlen("PowerApparent_S_Phase_2")) == 0) {
+    detail::parseInverterValue(varValue, 100000, &currentApparentPower[1]);
+  } else if (strncmp(varName,
+                     "PowerApparent_S_Phase_3",
+                     strlen("PowerApparent_S_Phase_3")) == 0) {
+    detail::parseInverterValue(varValue, 100000, &currentApparentPower[2]);
+  } else if (strncmp(varName,
+                     "PowerFactor_Phase_1",
+                     strlen("PowerFactor_Phase_1")) == 0) {
+    detail::parseInverterValue(varValue, 1000, &currentPowerFactor[0]);
+  } else if (strncmp(varName,
+                     "PowerFactor_Phase_2",
+                     strlen("PowerFactor_Phase_2")) == 0) {
+    detail::parseInverterValue(varValue, 1000, &currentPowerFactor[1]);
+  } else if (strncmp(varName,
+                     "PowerFactor_Phase_3",
+                     strlen("PowerFactor_Phase_3")) == 0) {
+    detail::parseInverterValue(varValue, 1000, &currentPowerFactor[2]);
+  } else if (strncmp(varName,
+                     "PowerReactive_Q_Phase_1",
+                     strlen("PowerReactive_Q_Phase_1")) == 0) {
+    detail::parseInverterValue(varValue, 100000, &currentReactivePower[0]);
+  } else if (strncmp(varName,
+                     "PowerReactive_Q_Phase_2",
+                     strlen("PowerReactive_Q_Phase_2")) == 0) {
+    detail::parseInverterValue(varValue, 100000, &currentReactivePower[1]);
+  } else if (strncmp(varName,
+                     "PowerReactive_Q_Phase_3",
+                     strlen("PowerReactive_Q_Phase_3")) == 0) {
+    detail::parseInverterValue(varValue, 100000, &currentReactivePower[2]);
+  } else if (strncmp(varName,
+                     "PowerReal_P_Phase_1",
+                     strlen("PowerReal_P_Phase_1")) == 0) {
+    detail::parseInverterValue(varValue, 100000, &currentActivePower[0]);
+  } else if (strncmp(varName,
+                     "PowerReal_P_Phase_2",
+                     strlen("PowerReal_P_Phase_2")) == 0) {
+    detail::parseInverterValue(varValue, 100000, &currentActivePower[1]);
+  } else if (strncmp(varName,
+                     "PowerReal_P_Phase_3",
+                     strlen("PowerReal_P_Phase_3")) == 0) {
+    detail::parseInverterValue(varValue, 100000, &currentActivePower[2]);
+  } else if (strncmp(varName,
+                     "Voltage_AC_Phase_1",
+                     strlen("Voltage_AC_Phase_1")) == 0) {
+    detail::parseInverterValue(varValue, 100, &currentVoltage[0]);
+  } else if (strncmp(varName,
+                     "Voltage_AC_Phase_2",
+                     strlen("Voltage_AC_Phase_2")) == 0) {
+    detail::parseInverterValue(varValue, 100, &currentVoltage[1]);
+  } else if (strncmp(varName,
+                     "Voltage_AC_Phase_3",
+                     strlen("Voltage_AC_Phase_3")) == 0) {
+    detail::parseInverterValue(varValue, 100, &currentVoltage[2]);
+  }
+}
+
+void Fronius::setSinglePhaseInverterValues(bool zeroValues) {
+  if (zeroValues) {
+    currentActivePower[0] = 0;
+    currentFreq = 0;
+    currentCurrent[0] = 0;
+    currentVoltage[0] = 0;
+  } else {
+    setFwdActEnergy(0, totalGeneratedEnergy);
+    setPowerActive(0, currentActivePower[0]);
+    setCurrent(0, currentCurrent[0]);
+    setVoltage(0, currentVoltage[0]);
+    setFreq(currentFreq);
+  }
+}
+
+void Fronius::setThreePhaseInverterValues(bool zeroValues) {
+  if (zeroValues) {
+    currentCurrent[0] = 0;
+    currentVoltage[0] = 0;
+    currentCurrent[1] = 0;
+    currentVoltage[1] = 0;
+    currentCurrent[2] = 0;
+    currentVoltage[2] = 0;
+    currentFreq = 0;
+    currentActivePower[0] = 0;
+  } else {
+    setFreq(currentFreq);
+    setCurrent(0, currentCurrent[0]);
+    setVoltage(0, currentVoltage[0]);
+    /* divide by 3, because we do not have this data per
+     phase, it is safe, cause inverter should always produce
+     same amount of energy on each phase */
+    setPowerActive(0, currentActivePower[0] / 3);
+    setFwdActEnergy(0, totalGeneratedEnergy / 3);
+    setCurrent(1, currentCurrent[1]);
+    setVoltage(1, currentVoltage[1]);
+    setPowerActive(1, currentActivePower[0] / 3);
+    setFwdActEnergy(1, totalGeneratedEnergy / 3);
+    setCurrent(2, currentCurrent[2]);
+    setVoltage(2, currentVoltage[2]);
+    setPowerActive(2, currentActivePower[0] / 3);
+    setFwdActEnergy(2, totalGeneratedEnergy / 3);
+  }
+}
+
+void Fronius::setThreePhaseMeterValues(bool zeroValues) {
+  if (zeroValues) {
+    fwdActEnergy = 0;
+    rvrActEnergy = 0;
+    fwdReactEnergy = 0;
+    rvrReactEnergy = 0;
+    currentVoltage[0] = 0;
+    currentVoltage[1] = 0;
+    currentVoltage[2] = 0;
+    currentCurrent[0] = 0;
+    currentCurrent[1] = 0;
+    currentCurrent[2] = 0;
+    currentFreq = 0;
+    currentActivePower[0] = 0;
+    currentActivePower[1] = 0;
+    currentActivePower[2] = 0;
+    currentReactivePower[0] = 0;
+    currentReactivePower[1] = 0;
+    currentReactivePower[2] = 0;
+    currentApparentPower[0] = 0;
+    currentApparentPower[1] = 0;
+    currentApparentPower[2] = 0;
+    currentPowerFactor[0] = 0;
+    currentPowerFactor[1] = 0;
+    currentPowerFactor[2] = 0;
+  } else {
+    setFwdActEnergy(0, fwdActEnergy);
+    setRvrActEnergy(0, rvrActEnergy);
+    setFwdReactEnergy(0, fwdReactEnergy);
+    setRvrReactEnergy(0, rvrReactEnergy);
+    setVoltage(0, currentVoltage[0]);
+    setVoltage(1, currentVoltage[1]);
+    setVoltage(2, currentVoltage[2]);
+    setCurrent(0, currentCurrent[0]);
+    setCurrent(1, currentCurrent[1]);
+    setCurrent(2, currentCurrent[2]);
+    setFreq(currentFreq);
+    setPowerActive(0, currentActivePower[0]);
+    setPowerActive(1, currentActivePower[1]);
+    setPowerActive(2, currentActivePower[2]);
+    setPowerReactive(0, currentReactivePower[0]);
+    setPowerReactive(1, currentReactivePower[1]);
+    setPowerReactive(2, currentReactivePower[2]);
+    setPowerApparent(0, currentApparentPower[0]);
+    setPowerApparent(1, currentApparentPower[1]);
+    setPowerApparent(2, currentApparentPower[2]);
+    setPowerFactor(0, currentPowerFactor[0]);
+    setPowerFactor(1, currentPowerFactor[1]);
+    setPowerFactor(2, currentPowerFactor[2]);
+  }
+}
+
+void Fronius::iterateAlways() {
+  if (dataFetchInProgress) {
+    if (millis() - connectionTimeoutMs > 30000) {
+      SUPLA_LOG_DEBUG(
+          "Fronius: connection timeout. Remote host is not responding");
+      client->stop();
+      dataFetchInProgress = false;
+      dataIsReady = false;
+      return;
+    }
+    if (!client->connected()) {
+      SUPLA_LOG_DEBUG("Fronius fetch completed");
+      dataFetchInProgress = false;
+      dataIsReady = true;
+    }
+    if (client->available()) {
+      SUPLA_LOG_DEBUG("Reading data from Fronius: %d", client->available());
+    }
+    while (client->available()) {
+      char c;
+      c = client->read();
+      if (c == '\n') {
+        if (startCharFound && bytesCounter > 0 &&
+            bytesCounter < static_cast<int>(sizeof(buf))) {
+          buf[bytesCounter] = '\0';
+          int last = bytesCounter;
+          while (last > 0 &&
+                 isspace(static_cast<unsigned char>(buf[last - 1]))) {
+            last--;
+          }
+          // remove last char if it is a comma
+          if (last > 0 && buf[last - 1] == ',') {
+            buf[last - 1] = '\0';
+          }
+          char varName[80] = {};
+          char varValue[80] = {};
+          int end = -1;
+          bool validRecord =
+              sscanf(buf, " \"%79[^\"]\" : %79s %n",
+                     varName, varValue, &end) == 2 &&
+              end >= 0 && detail::onlyWhitespace(buf + end);
+          bool quotedValue = varValue[0] == '"';
+          if (validRecord && quotedValue) {
+            size_t length = strlen(varValue);
+            validRecord = length > 2 && varValue[length - 1] == '"';
+            if (validRecord) {
+              varValue[length - 1] = '\0';
+              memmove(varValue, varValue + 1, length - 1);
+            }
+          }
+          if (!validRecord) {
+            variableToFetch[0] = 0;
+          } else if (deviceType == FRONIUS_THREE_PHASE_METER) {
+            // meter values are in same line so call directly
+            Fronius::getThreePhaseMeterValues(varName, varValue);
+          } else {
+            // inverter values are in dict so we need to look for "Value"
+            if (strcmp(varName, "Unit") == 0) {
+              if (!quotedValue) {
+                variableToFetch[0] = 0;
+              }
+            } else {
+              if (strcmp(varName, "Value") == 0) {
+                if (variableToFetch[0] != 0) {
+                  if (deviceType == FRONIUS_SINGLE_PHASE_INVERTER) {
+                    Fronius::getSinglePhaseInverterValues(variableToFetch,
+                                                         varValue);
+                  } else if (deviceType == FRONIUS_THREE_PHASE_INVERTER) {
+                    Fronius::getThreePhaseInverterValues(variableToFetch,
+                                                        varValue);
+                  }
+                }
+                variableToFetch[0] = 0;
+              } else if (!quotedValue && strcmp(varValue, "{") == 0) {
+                snprintf(
+                    variableToFetch, sizeof(variableToFetch), "%s", varName);
+              } else {
+                variableToFetch[0] = 0;
+              }
+            }
+          }
+        } else if (startCharFound) {
+          variableToFetch[0] = 0;
+        }
+        bytesCounter = 0;
+        startCharFound = false;
+      } else if (c == '"' || startCharFound) {
+        startCharFound = true;
+        if (bytesCounter < 80) {
+          buf[bytesCounter] = c;
+          bytesCounter++;
+        }
+      } else if (c == '}' ||
+                 (!isspace(static_cast<unsigned char>(c)) &&
+                  c != '{' && c != ',')) {
+        variableToFetch[0] = 0;
+      }
+    }
+    if (!client->connected()) {
+      client->stop();
+    }
+  }
+  if (dataIsReady) {
+    dataIsReady = false;
+    if (deviceType == FRONIUS_SINGLE_PHASE_INVERTER) {
+      Fronius::setSinglePhaseInverterValues(false);
+    } else if (deviceType == FRONIUS_THREE_PHASE_INVERTER) {
+      Fronius::setThreePhaseInverterValues(false);
+    } else if (deviceType == FRONIUS_THREE_PHASE_METER) {
+      Fronius::setThreePhaseMeterValues(false);
+    }
+    updateChannelValues();
+
+    /* workaround for missing data even if query succeeds:
+     if 3 consecutive queries didn't returned frequency, assume
+     that datamanager is up, but inverter is down so clear values,
+     but only when fetching data for inverter */
+    if (invDisabledCounter > 3) {
+      SUPLA_LOG_DEBUG("Data is missing, inverter is down");
+      invDisabledCounter = 4;  // overflow protection
+      if (deviceType == FRONIUS_SINGLE_PHASE_INVERTER) {
+        Fronius::setSinglePhaseInverterValues(true);
+      } else if (deviceType == FRONIUS_THREE_PHASE_INVERTER) {
+        Fronius::setThreePhaseInverterValues(true);
+        /* for meter invDisabledCounter is not incremented so this
+        code will never run, added for sake of closure */
+      } else if (deviceType == FRONIUS_THREE_PHASE_METER) {
+        Fronius::setThreePhaseMeterValues(true);
+      }
+    }
+  }
+}
+
+void Fronius::getSinglePhaseInverterURL(char* buf, char* idBuf) {
+  snprintf(buf,
+           200,
+           "GET "
+           "/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceID="
+           "%s&DataCollection=CommonInverterData HTTP/1.1",
+           idBuf);
+}
+
+void Fronius::getThreePhaseInverterURL(char* buf, char* idBuf) {
+  snprintf(buf,
+           200,
+           "GET "
+           "/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceID="
+           "%s&DataCollection=%s HTTP/1.1",
+           idBuf,
+           fetch3p ? "3PInverterData" : "CommonInverterData");
+  fetch3p = !fetch3p;
+}
+
+void Fronius::getThreePhaseMeterURL(char* buf, char* idBuf) {
+  snprintf(buf,
+           200,
+           "GET "
+           "/solar_api/v1/GetMeterRealtimeData.cgi?Scope=Device&DeviceId="
+           "%s HTTP/1.1",
+           idBuf);
+}
+
+bool Fronius::iterateConnected() {
+  if (!dataFetchInProgress) {
+    if (lastReadTime == 0 || millis() - lastReadTime > refreshRateSec * 1000) {
+      lastReadTime = millis();
+      SUPLA_LOG_DEBUG("Fronius connecting %d", deviceId);
+      if (client->connect(ip, port)) {
+        retryCounter = 0;
+        dataFetchInProgress = true;
+        variableToFetch[0] = 0;
+        connectionTimeoutMs = lastReadTime;
+
+        char idBuf[20];
+        snprintf(idBuf, sizeof(idBuf), "%d", deviceId);
+        char buf[200] = {};
+        if (deviceType == FRONIUS_SINGLE_PHASE_INVERTER) {
+          Fronius::getSinglePhaseInverterURL(buf, idBuf);
+        } else if (deviceType == FRONIUS_THREE_PHASE_INVERTER) {
+          Fronius::getThreePhaseInverterURL(buf, idBuf);
+        } else if (deviceType == FRONIUS_THREE_PHASE_METER) {
+          Fronius::getThreePhaseMeterURL(buf, idBuf);
+        } else {
+          SUPLA_LOG_ERROR("Unsupported Fronius device type: %d", deviceType);
+          client->stop();
+          dataFetchInProgress = false;
+          return Element::iterateConnected();
+        }
+        SUPLA_LOG_VERBOSE("Fronius query: %s", buf);
+        client->println(buf);
+        client->println("Host: localhost");
+        client->println("Connection: close");
+        client->println();
+
+      } else {  // if connection wasn't successful, try few times. If it fails,
+                // then assume that inverter is off during the night
+        SUPLA_LOG_DEBUG("Failed to connect to Fronius");
+        retryCounter++;
+        if (retryCounter > 3) {
+          if (deviceType == FRONIUS_SINGLE_PHASE_INVERTER) {
+            Fronius::setSinglePhaseInverterValues(true);
+          } else if (deviceType == FRONIUS_THREE_PHASE_INVERTER) {
+            Fronius::setThreePhaseInverterValues(true);
+          } else if (deviceType == FRONIUS_THREE_PHASE_METER) {
+            Fronius::setThreePhaseMeterValues(true);
+          }
+          dataIsReady = true;
+        }
+      }
+    }
+  }
+  return Element::iterateConnected();
+}
+
+void Fronius::readValuesFromDevice() {
+}
+
+}  // namespace PV
+}  // namespace Supla

@@ -1,0 +1,134 @@
+// SPDX-FileCopyrightText: AC SOFTWARE SP. Z O.O.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "temperature_drop_sensor.h"
+
+#include <supla/time.h>
+
+using Supla::Sensor::TemperatureDropSensor;
+
+TemperatureDropSensor::TemperatureDropSensor(
+    Supla::Sensor::ThermHygroMeter *thermometer)
+    : thermometer(thermometer) {
+  for (int i = 0; i < MAX_TEMPERATURE_MEASUREMENTS; i++) {
+    measurements[i] = INT16_MIN;
+  }
+  measurementIndex = 0;
+  virtualBinary.setFunction(SUPLA_CHANNELFNC_OPENINGSENSOR_WINDOW);
+  virtualBinary.set();  // by default "window" is considered to be closed
+}
+
+void TemperatureDropSensor::onInit() {
+}
+
+void TemperatureDropSensor::iterateAlways() {
+  if (thermometer == nullptr) {
+    return;
+  }
+
+  if (millis() - lastTemperatureUpdate >= probeIntervalMs) {
+    lastTemperatureUpdate = millis();
+    auto temperature = thermometer->getTempInt16();
+    // add temperature to table
+    if (filteringTimestamp == 0 && temperature > INT16_MIN) {
+      measurements[measurementIndex] = temperature;
+      measurementIndex++;
+      if (measurementIndex >= MAX_TEMPERATURE_MEASUREMENTS) {
+        measurementIndex = 0;
+      }
+    }
+
+    if (dropDetectionTimestamp) {
+      if (temperature - averageAtDropDetection > temperatureDropThreshold / 2) {
+        if (!detectTemperatureDrop(temperature, &averageAtDropDetection)) {
+          virtualBinary.set();
+          dropDetectionTimestamp = 0;
+          filteringTimestamp = 0;
+        }
+      }
+
+      // maximum time for drop detection is 30 minutes
+      if (millis() - dropDetectionTimestamp > 30 * 60 * 1000) {
+        virtualBinary.set();
+        dropDetectionTimestamp = 0;
+        filteringTimestamp = 0;
+      }
+    } else {
+      if (detectTemperatureDrop(temperature, &averageAtDropDetection)) {
+        if (dropDetectionDelayMs) {
+          if (filteringTimestamp == 0) {
+            filteringTimestamp = millis();
+          }
+        }
+        if (dropDetectionDelayMs == 0 ||
+            millis() - filteringTimestamp > dropDetectionDelayMs) {
+          virtualBinary.clear();
+          dropDetectionTimestamp = millis();
+          filteringTimestamp = 0;
+        }
+      } else if (filteringTimestamp != 0) {
+        filteringTimestamp = 0;
+      }
+    }
+  }
+}
+
+bool TemperatureDropSensor::detectTemperatureDrop(int16_t temperature,
+                                           int16_t *average) const {
+  // calculate 10 min average starting 3 min ago (measurements are stored
+  // every probeIntervalMs)
+  double oneMinuteIndexCount = (60000.0 / probeIntervalMs);
+  int fromIndex = measurementIndex - (10 + 3) * oneMinuteIndexCount;
+  while (fromIndex < 0) {
+    fromIndex += MAX_TEMPERATURE_MEASUREMENTS;
+  }
+  int averageInPast = getAverage(fromIndex, 10 * oneMinuteIndexCount);
+  *average = averageInPast;
+  if (averageInPast > INT16_MIN) {
+    if (temperature - averageInPast < temperatureDropThreshold) {
+      return true;
+    }
+  }
+  return false;
+}
+
+int16_t TemperatureDropSensor::getAverage(int fromIndex,
+                                          int itemsToCount) const {
+  if (fromIndex < 0 || fromIndex >= MAX_TEMPERATURE_MEASUREMENTS ||
+      itemsToCount <= 0 || itemsToCount > MAX_TEMPERATURE_MEASUREMENTS) {
+    return INT16_MIN;
+  }
+
+  int sum = 0;
+  int count = 0;
+  for (int i = 0; i <= itemsToCount; i++) {
+    auto temperature =
+      measurements[(fromIndex + i) % MAX_TEMPERATURE_MEASUREMENTS];
+    if (temperature > INT16_MIN) {
+      sum += measurements[(fromIndex + i) % MAX_TEMPERATURE_MEASUREMENTS];
+      count++;
+    }
+  }
+
+  if (count == 0) {
+    return INT16_MIN;
+  }
+
+  return sum / count;
+}
+
+bool TemperatureDropSensor::isDropDetected() const {
+  return dropDetectionTimestamp != 0;
+}
+
+int TemperatureDropSensor::getBinarySensorChannelNo() const {
+  return virtualBinary.getChannelNumber();
+}
+
+void TemperatureDropSensor::setTemperatureDropThreshold(int16_t threshold) {
+  temperatureDropThreshold = threshold;
+}
+
+void TemperatureDropSensor::setDropDetectionDelayMs(uint32_t delayMs) {
+  dropDetectionDelayMs = delayMs;
+}

@@ -1,0 +1,238 @@
+// SPDX-FileCopyrightText: AC SOFTWARE SP. Z O.O.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#ifndef SRC_SUPLA_PROTOCOL_SUPLA_SRPC_H_
+#define SRC_SUPLA_PROTOCOL_SUPLA_SRPC_H_
+
+#include <stddef.h>
+#include <supla-common/proto.h>
+
+#include "protocol_layer.h"
+
+#define SUPLA_SRPC_CALCFG_RESULT_DONT_REPLY (-1)
+#define SUPLA_SRPC_CALCFG_RESULT_PENDING    (-2)
+
+namespace Supla {
+
+class Client;
+
+namespace Device {
+class ChannelConflictResolver;
+class RemoteDeviceConfig;
+}  // namespace Device
+
+namespace Protocol {
+
+struct CalCfgResultPendingItem;
+
+class CalCfgResultPending {
+ public:
+  friend class SuplaSrpc;
+  void set(int16_t channelNo,
+           int32_t receiverId,
+           int32_t command,
+           uint32_t timeoutMs = 0);
+  void clear(int16_t channelNo, int32_t command = -1);
+  void clearTimeout(int16_t channelNo, int32_t command = -1);
+  void clearAll();
+  bool empty() const;
+  CalCfgResultPendingItem *get(int16_t channelNo, int32_t command = -1);
+
+ protected:
+  CalCfgResultPending();
+  ~CalCfgResultPending();
+  CalCfgResultPendingItem *first = nullptr;
+};
+
+class SuplaSrpc : public ProtocolLayer {
+ public:
+  static bool isSuplaSSLEnabled;
+
+  explicit SuplaSrpc(SuplaDeviceClass *sdc, int version = 23);
+  ~SuplaSrpc();
+
+  void setNetworkClient(Supla::Client *newClient);
+
+  void onInit() override;
+  bool onLoadConfig() override;
+  bool verifyConfig() override;
+  bool isEnabled() override;
+  void disconnect() override;
+  bool iterate(uint32_t _millis) override;
+  bool isNetworkRestartRequested() override;
+  uint32_t getConnectionFailTime() override;
+  ConnectionError getConnectionError() const override;
+  bool isRegisteredAndReady() override;
+  void initClient();
+
+  void sendActionTrigger(uint8_t channelNumber, uint32_t actionId) override;
+  void sendRegisterNotification(
+      TDS_RegisterPushNotification *notification) override;
+  bool sendNotification(int context,
+                        const char *title,
+                        const char *message,
+                        int soundId) override;
+  void sendSubdeviceDetails(TDS_SubdeviceDetails *subdeviceDetails) override;
+  void getUserLocaltime() override;
+  void sendChannelValueChanged(uint8_t channelNumber,
+                               int8_t *value,
+                               uint8_t offline,
+                               uint32_t validityTimeSec) override;
+  void sendExtendedChannelValueChanged(
+      uint8_t channelNumber, TSuplaChannelExtendedValue *value) override;
+
+  void getChannelConfig(uint8_t channelNumber, uint8_t configType) override;
+  bool setChannelConfig(uint8_t channelNumber,
+                        _supla_int_t channelFunction,
+                        void *channelConfig,
+                        int size,
+                        uint8_t configType) override;
+
+  bool setDeviceConfig(TSDS_SetDeviceConfig *deviceConfig) override;
+  bool setInitialCaption(uint8_t channelNumber, const char *caption) override;
+  void sendRemainingTimeValue(uint8_t channelNumber,
+                              uint32_t timeMs,
+                              uint8_t state,
+                              int32_t senderId) override;
+  void sendRemainingTimeValue(uint8_t channelNumber,
+                              uint32_t remainingTime,
+                              unsigned char state[SUPLA_CHANNELVALUE_SIZE],
+                              int32_t senderId,
+                              bool useSecondsInsteadOfMs) override;
+
+  void onVersionError(TSDC_SuplaVersionError *versionError);
+  void onRegisterResult(TSD_SuplaRegisterDeviceResult *register_device_result);
+  void onRegisterResultB(
+      TSD_SuplaRegisterDeviceResult_B *registerDeviceResultB);
+  void onDeviceSyncDone();
+  void onSetActivityTimeoutResult(TSDC_SuplaSetActivityTimeoutResult *result);
+  void setActivityTimeout(uint32_t activityTimeoutSec);
+  uint32_t getActivityTimeout();
+  void updateLastResponseTime();
+  void updateLastSentTime();
+  void onGetUserLocaltimeResult(TSDC_UserLocalTimeResult *result);
+  void sendChannelStateResult(int32_t receiverId, uint8_t channelNo) override;
+
+  void setServerPort(int value);
+  void setVersion(int value);
+  bool hasWriteFailure() const;
+  void markWriteFailure();
+  void setSuplaCACert(const char *);
+  void setSupla3rdPartyCACert(const char *);
+  const char *getSuplaCACert() const;
+  const char *getSupla3rdPartyCACert() const;
+  void setLowLevelDebugLogs(bool value);
+  bool isUpdatePending() override;
+  void handleDeviceConfig(TSDS_SetDeviceConfig *deviceConfig);
+  void handleSetDeviceConfigResult(TSDS_SetDeviceConfigResult *result);
+
+  Supla::Client *client = nullptr;
+  CalCfgResultPending calCfgResultPending;
+  void sendPendingCalCfgResult(int16_t channelNo,
+                               int32_t result,
+                               int32_t command,
+                               int dataSize = 0,
+                               void *data = nullptr);
+  void sendPendingCalCfgResultForCommand(int16_t channelNo,
+                                         int32_t result,
+                                         int32_t pendingCommand,
+                                         int32_t responseCommand,
+                                         int dataSize = 0,
+                                         void *data = nullptr);
+  void sendCalCfgResult(int32_t receiverId,
+                        int16_t channelNo,
+                        int32_t result,
+                        int32_t command,
+                        int dataSize = 0,
+                        void *data = nullptr);
+
+  void clearPendingCalCfgResult(int16_t channelNo, int32_t command = -1);
+  void clearPendingCalCfgTimeout(int16_t channelNo, int32_t command = -1);
+
+  static const char *configResultToCStr(int result);
+
+  void setChannelConflictResolver(
+      Supla::Device::ChannelConflictResolver *resolver);
+
+#if SUPLA_SRPC_PACKET_LOG_ENABLED && !defined(SUPLA_DISABLE_LOGS)
+  static void onPacketSent(void *srpcHandle,
+                           unsigned _supla_int_t callId,
+                           void *data,
+                           unsigned _supla_int_t dataSize,
+                           void *userParam);
+  static void onPacketReceived(void *srpcHandle,
+                               unsigned _supla_int_t callId,
+                               void *data,
+                               unsigned _supla_int_t dataSize,
+                               void *userParam);
+  void logSrpcPacket(bool send, int callId, const uint8_t *buf, size_t size);
+  static const char *callIdToName(int callId);
+  static bool isSensitiveCallId(int callId);
+#endif
+
+ protected:
+  bool ping();
+  void scheduleReconnect(uint32_t now);
+  void initializeSrpc();
+  void deinitializeSrpc();
+  void addLastStateAdError(char *buf);
+#ifndef ARDUINO_ARCH_AVR
+  bool autodiscover(uint32_t now);
+#endif
+
+  uint8_t version = 0;
+  uint8_t activityTimeoutS = 30;
+  uint8_t securityLevel = 0;
+  int8_t registered = 0;
+  bool requestNetworkRestart : 1;
+  bool enabled : 1;
+  bool setDeviceConfigReceivedAfterRegistration : 1;
+  bool deviceSyncDoneReceived : 1;
+  bool firstConnectionAttempt : 1;
+  bool adErrorLogged : 1;
+  bool writeFailure : 1;
+  bool ownsSelectedCertificate : 1;
+
+ private:
+  bool versionErrorDisconnectPending : 1;
+
+ protected:
+  uint8_t autodiscoverRetryCounter = 0;
+  uint16_t connectionFailCounter = 0;
+  uint8_t reconnectAttemptCounter = 0;
+
+  uint32_t lastPingTimeMs = 0;
+  uint32_t waitForIterate = 0;
+  uint32_t lastIterateTime = 0;
+  uint32_t lastResponseMs = 0;
+  uint32_t lastSentMs = 0;
+
+  int port = -1;
+
+  const char *suplaCACert = nullptr;
+  const char *supla3rdPartyCACert = nullptr;
+  const char *selectedCertificate = nullptr;
+  void *srpc = nullptr;
+  Supla::Device::ChannelConflictResolver *channelConflictResolver = nullptr;
+
+ private:
+  void releaseOwnedCertificate();
+  void handlePendingCalCfgTimeouts(uint32_t _millis);
+  Supla::Device::RemoteDeviceConfig *remoteDeviceConfig = nullptr;
+};
+}  // namespace Protocol
+
+// Method passed to SRPC as a callback to read raw data from network interface
+_supla_int_t dataRead(void *buf, _supla_int_t count, void *sdc);
+// Method passed to SRPC as a callback to write raw data to network interface
+_supla_int_t dataWrite(void *buf, _supla_int_t count, void *sdc);
+// Method passed to SRPC as a callback to handle response from Supla server
+void messageReceived(void *srpc,
+                     unsigned _supla_int_t rrId,
+                     unsigned _supla_int_t callType,
+                     void *userParam,
+                     unsigned char protoVersion);
+
+}  // namespace Supla
+
+#endif  // SRC_SUPLA_PROTOCOL_SUPLA_SRPC_H_

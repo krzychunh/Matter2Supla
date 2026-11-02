@@ -1,0 +1,83 @@
+// SPDX-FileCopyrightText: AC SOFTWARE SP. Z O.O.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include <string.h>
+#include <supla/log_wrapper.h>
+#include <supla/auto_lock.h>
+#include <supla/mutex.h>
+#include <stdio.h>
+
+#include "last_state_logger.h"
+
+namespace Supla {
+namespace Device {
+
+LastStateLogger::LastStateLogger() {
+  mutex = Supla::Mutex::Create();
+}
+
+LastStateLogger::~LastStateLogger() {
+  if (mutex) {
+    delete mutex;
+  }
+}
+
+bool LastStateLogger::prepareLastStateLog() {
+  index = 0;
+  return true;
+}
+
+void LastStateLogger::log(const char *state, int uptimeSec) {
+  size_t newStateSize = strlen(state);
+  char timestamp[32] = {};
+  if (uptimeSec > 7) {
+    snprintf(timestamp, sizeof(timestamp), " (%d)", uptimeSec);
+  }
+  size_t timestampSize = strlen(timestamp);
+
+  if (newStateSize + timestampSize + 1 > LAST_STATE_LOGGER_BUFFER_SIZE) {
+    return;
+  }
+
+  Supla::AutoLock autoLock(mutex);
+  char *copy = new char[LAST_STATE_LOGGER_BUFFER_SIZE];
+  memcpy(copy, buffer, LAST_STATE_LOGGER_BUFFER_SIZE);
+  memcpy(buffer, state, newStateSize);
+  memcpy(buffer + newStateSize, timestamp, timestampSize);
+  newStateSize += timestampSize;
+  buffer[newStateSize] = '\0';
+  memcpy(buffer + newStateSize + 1,
+         copy,
+         (LAST_STATE_LOGGER_BUFFER_SIZE - newStateSize - 1));
+  buffer[LAST_STATE_LOGGER_BUFFER_SIZE - 4] = '.';
+  buffer[LAST_STATE_LOGGER_BUFFER_SIZE - 3] = '.';
+  buffer[LAST_STATE_LOGGER_BUFFER_SIZE - 2] = '.';
+  buffer[LAST_STATE_LOGGER_BUFFER_SIZE - 1] = '\0';
+
+  SUPLA_LOG_INFO("LAST STATE ADDED: %s", buffer);
+  delete [] copy;
+}
+
+void LastStateLogger::clear() {
+  Supla::AutoLock autoLock(mutex);
+  memset(buffer, 0, LAST_STATE_LOGGER_BUFFER_SIZE);
+}
+
+char *LastStateLogger::getLog() {
+  if (buffer[index]) {
+    if (index == 0) {
+      mutex->lock();
+    }
+    if (index < LAST_STATE_LOGGER_BUFFER_SIZE) {
+      char *ptr = buffer + index;
+      size_t logSize = strlen(buffer + index);
+      index += logSize + 1;
+      return ptr;
+    }
+  }
+  mutex->unlock();
+  return nullptr;
+}
+
+};  // namespace Device
+};  // namespace Supla

@@ -1,0 +1,27 @@
+
+# ESP-IDF build artifacts
+/build/
+/build-*/
+/managed_components/
+sdkconfig
+sdkconfig.old
+
+# Generated files
+*.bin
+*.elf
+*.map
+*.log
+*.pyc
+__pycache__/
+
+# Local credentials
+.env
+.env.*
+*.pem
+*.key
+secrets/
+
+# Kopie robocze i diagnostyczne
+*.before-*
+*.pre-m2s-web
+sdkconfig.before-*

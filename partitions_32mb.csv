@@ -1,0 +1,6 @@
+# ESP32-C5 32 MiB, pojedynczy firmware fabryczny, BEZ OTA.
+# Nie jest to partycja kompatybilna z dotychczasowym układem Arduino v0.8.
+# Name,    Type, SubType, Offset, Size, Flags
+nvs,       data, nvs,      ,      0x10000,
+phy_init,  data, phy,      ,      0x1000,
+factory,   app,  factory,  ,      0x800000,

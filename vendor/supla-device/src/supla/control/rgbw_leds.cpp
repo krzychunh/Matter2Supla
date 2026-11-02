@@ -1,0 +1,78 @@
+// SPDX-FileCopyrightText: AC SOFTWARE SP. Z O.O.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "rgbw_leds.h"
+
+namespace {
+constexpr uint8_t LegacyAnalogWriteResolutionBits = 10;
+constexpr uint32_t LegacyAnalogWriteFrequencyHz = 1000;
+
+void ConfigureLegacyAnalogOutput(Supla::Control::RGBWBase &lighting,
+                                 Supla::Io::IoPin &pin) {
+  lighting.setPwmResolutionBits(LegacyAnalogWriteResolutionBits);
+  lighting.setPwmFrequency(LegacyAnalogWriteFrequencyHz);
+  pin.setPwmResolutionBits(lighting.getPwmResolutionBits());
+  pin.setPwmFrequency(lighting.getPwmFrequency());
+}
+}  // namespace
+
+Supla::Control::RGBWLeds::RGBWLeds(Supla::Io::Base *io,
+                                   int redPin,
+                                   int greenPin,
+                                   int bluePin,
+                                   int brightnessPin)
+    : RGBWLeds(Supla::Io::IoPin(redPin, io),
+               Supla::Io::IoPin(greenPin, io),
+               Supla::Io::IoPin(bluePin, io),
+               Supla::Io::IoPin(brightnessPin, io)) {}
+
+Supla::Control::RGBWLeds::RGBWLeds(int redPin,
+                                   int greenPin,
+                                   int bluePin,
+                                   int brightnessPin)
+    : RGBWLeds(Supla::Io::IoPin(redPin),
+               Supla::Io::IoPin(greenPin),
+               Supla::Io::IoPin(bluePin),
+               Supla::Io::IoPin(brightnessPin)) {}
+
+Supla::Control::RGBWLeds::RGBWLeds(Supla::Io::IoPin redPin,
+                                   Supla::Io::IoPin greenPin,
+                                   Supla::Io::IoPin bluePin,
+                                   Supla::Io::IoPin brightnessPin)
+    : redPin(redPin),
+      greenPin(greenPin),
+      bluePin(bluePin),
+      brightnessPin(brightnessPin) {
+  this->redPin.setMode(OUTPUT);
+  this->greenPin.setMode(OUTPUT);
+  this->bluePin.setMode(OUTPUT);
+  this->brightnessPin.setMode(OUTPUT);
+}
+
+void Supla::Control::RGBWLeds::setRGBWValueOnDevice(uint32_t red,
+                          uint32_t green,
+                          uint32_t blue,
+                          uint32_t brightness) {
+  redPin.analogWrite(scalePwmValueForOutput(redPin, red));
+  greenPin.analogWrite(scalePwmValueForOutput(greenPin, green));
+  bluePin.analogWrite(scalePwmValueForOutput(bluePin, blue));
+  brightnessPin.analogWrite(
+      scalePwmValueForOutput(brightnessPin, brightness));
+}
+
+void Supla::Control::RGBWLeds::onInit() {
+  ConfigureLegacyAnalogOutput(*this, redPin);
+  ConfigureLegacyAnalogOutput(*this, greenPin);
+  ConfigureLegacyAnalogOutput(*this, bluePin);
+  ConfigureLegacyAnalogOutput(*this, brightnessPin);
+  redPin.configureAnalogOutput();
+  greenPin.configureAnalogOutput();
+  bluePin.configureAnalogOutput();
+  brightnessPin.configureAnalogOutput();
+  redPin.pinMode();
+  greenPin.pinMode();
+  bluePin.pinMode();
+  brightnessPin.pinMode();
+
+  Supla::Control::RGBWBase::onInit();
+}

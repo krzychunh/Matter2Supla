@@ -1,0 +1,124 @@
+// SPDX-FileCopyrightText: AC SOFTWARE SP. Z O.O.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "light_relay.h"
+
+#include <supla/log_wrapper.h>
+#include <supla/time.h>
+#include <supla/storage/storage.h>
+#include <supla/control/relay.h>
+#include <supla/channels/channel.h>
+
+namespace Supla {
+namespace Control {
+
+namespace {
+
+Supla::Io::IoPin MakeOutputPin(Supla::Io::Base *io,
+                               int pin,
+                               bool highIsOn) {
+  Supla::Io::IoPin outputPin(pin, io);
+  outputPin.setActiveHigh(highIsOn);
+  outputPin.setMode(OUTPUT);
+  return outputPin;
+}
+
+}  // namespace
+
+#pragma pack(push, 1)
+struct LightRelayStateData {
+  uint16_t lifespan;
+  _supla_int_t turnOnSecondsCumulative;
+};
+#pragma pack(pop)
+
+LightRelay::LightRelay(Supla::Io::IoPin outputPin)
+    : Relay(outputPin,
+            SUPLA_BIT_FUNC_LIGHTSWITCH | SUPLA_BIT_FUNC_STAIRCASETIMER),
+      lifespan(10000),
+      turnOnSecondsCumulative(0) {
+  channel.setFlag(SUPLA_CHANNEL_FLAG_LIGHTSOURCELIFESPAN_SETTABLE);
+}
+
+LightRelay::LightRelay(int pin, bool highIsOn)
+    : LightRelay(MakeOutputPin(nullptr, pin, highIsOn)) {}
+
+void LightRelay::handleGetChannelState(TDSC_ChannelState *channelState) {
+  Supla::Control::Relay::handleGetChannelState(channelState);
+  channelState->Fields |= SUPLA_CHANNELSTATE_FIELD_LIGHTSOURCELIFESPAN |
+                          SUPLA_CHANNELSTATE_FIELD_LIGHTSOURCEOPERATINGTIME;
+  channelState->LightSourceLifespan = lifespan;
+  channelState->LightSourceOperatingTime = turnOnSecondsCumulative;
+}
+
+int LightRelay::handleCalcfgFromServer(TSD_DeviceCalCfgRequest *request) {
+  if (request &&
+      request->Command == SUPLA_CALCFG_CMD_SET_LIGHTSOURCE_LIFESPAN) {
+    if (request->SuperUserAuthorized != 1) {
+      return SUPLA_CALCFG_RESULT_UNAUTHORIZED;
+    }
+
+    if (request->DataSize == sizeof(TCalCfg_LightSourceLifespan)) {
+      TCalCfg_LightSourceLifespan *config =
+          reinterpret_cast<TCalCfg_LightSourceLifespan *>(request->Data);
+
+      if (config->SetTime) {
+        lifespan = config->LightSourceLifespan;
+      }
+      if (config->ResetCounter) {
+        turnOnSecondsCumulative = 0;
+      }
+
+      return SUPLA_CALCFG_RESULT_DONE;
+    }
+  }
+
+  return SUPLA_CALCFG_RESULT_NOT_SUPPORTED;
+}
+
+void LightRelay::onLoadState() {
+  LightRelayStateData data;
+  if (Supla::Storage::ReadState((unsigned char *)&data, sizeof(data))) {
+    lifespan = data.lifespan;
+    turnOnSecondsCumulative = data.turnOnSecondsCumulative;
+
+    SUPLA_LOG_DEBUG(
+              "LightRelay[%d] settings restored from storage. Total lifespan: "
+              "%d h; current operating time: %d s",
+              channel.getChannelNumber(),
+              lifespan,
+              turnOnSecondsCumulative);
+  }
+  Relay::onLoadState();
+}
+
+void LightRelay::onSaveState() {
+  LightRelayStateData data;
+
+  data.lifespan = lifespan;
+  data.turnOnSecondsCumulative = turnOnSecondsCumulative;
+  Supla::Storage::WriteState((unsigned char *)&data, sizeof(data));
+  Relay::onSaveState();
+}
+
+void LightRelay::turnOn(_supla_int_t duration) {
+  turnOnTimestamp = millis();
+  Relay::turnOn(duration);
+}
+
+void LightRelay::iterateAlways() {
+  if (isOn()) {
+    uint32_t currentMillis = millis();
+    int seconds = (currentMillis - turnOnTimestamp) / 1000;
+    if (seconds > 0) {
+      turnOnTimestamp =
+          currentMillis - ((currentMillis - turnOnTimestamp) % 1000);
+      turnOnSecondsCumulative += seconds;
+    }
+  }
+
+  Relay::iterateAlways();
+}
+
+}  // namespace Control
+}  // namespace Supla
