@@ -48,6 +48,16 @@ main{position:relative;z-index:1}
 body::before{opacity:.12;background-size:390px 130px}
 }
 
+/* Stage 11B: clickable, keyboard-accessible SUPLA channel selectors. */
+.supla-assigned{display:block;width:100%;margin:0;padding:12px;text-align:left;color:inherit;font:inherit;font-weight:400;border:1px solid transparent;border-bottom:1px solid #30445e;border-radius:8px;background:transparent;cursor:pointer}
+.supla-assigned:hover{background:#183249}
+.supla-assigned.selected{border-color:#77e1c7;background:#153d3a}
+.supla-assigned:focus-visible{outline:3px solid #77e1c7;outline-offset:2px}
+/* Stage 11A: assigned devices. */
+.supla-assigned{padding:12px;border-bottom:1px solid #30445e}
+.supla-assigned:last-of-type{border-bottom:0}
+.supla-assigned strong{color:#85ebbb}
+.supla-assigned p{margin:5px 0;line-height:1.45}
 /* Stage 10F: no network resources or external fonts; minimal flash-only UI. */
 .badge.is-muted{color:#9aa9bc;background:#293544}.sd-wrap{margin:24px 0 4px}.sd-wrap h2{margin:0}.sd-topline{display:flex;gap:10px;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-bottom:15px}
 .sd-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px}
@@ -55,23 +65,10 @@ body::before{opacity:.12;background-size:390px 130px}
 .sd-state svg{width:24px;height:24px;flex:none;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .sd-state.is-up{color:#77e1b2;background:#14362e;border-color:#2d8062}
 .sd-state strong{display:block;font-size:13px;color:inherit}.sd-state small{font-size:12px;color:inherit;opacity:.85}
-.sd-panel{background:#152237;border:1px solid #30445e;border-radius:18px;padding:21px;margin-top:14px}
-.sd-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.sd-tag{padding:7px 11px;border-radius:99px;color:#92a4b5;background:#293544;font-size:12px;font-weight:700}
-.sd-tag.up{color:#85ebbb;background:#173e36}
-.sd-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}
-.sd-metric{background:#0f1c2d;border:1px solid #30425b;padding:17px;border-radius:12px;min-width:0}
-.sd-metric .sd-label{display:block;color:#a2b6ce;font-size:12px}.sd-metric strong{font-size:clamp(21px,3vw,32px);display:block;margin-top:8px;font-variant-numeric:tabular-nums}
-.sd-row{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-size:14px;margin:12px 0}
-.sd-track{height:10px;overflow:hidden;background:#314257;border-radius:999px}
-.sd-fill{height:100%;width:0;background:#55c998;border-radius:999px;transition:width .4s ease}
-.sd-details{color:#adbed2;font-size:12px;line-height:1.55;margin:12px 0 0}
-.sd-plot{margin-top:14px}.sd-plot svg{display:block;width:100%;height:138px;background:#101d30;border-radius:10px;border:1px solid #30445e;overflow:visible}
-.sd-plot path{fill:none;stroke:#76e1c5;stroke-width:2.5;vector-effect:non-scaling-stroke}
 .sd-tools{display:flex;gap:8px;flex-wrap:wrap}.sd-tools button{margin:6px 0 0;padding:8px 11px}
 .sd-statusline{min-height:1.2em}
-@media(max-width:650px){.sd-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.sd-panel{padding:15px}.sd-metrics{gap:7px}.sd-metric{padding:11px}}
-@media(max-width:380px){.sd-state{padding:9px 7px;gap:5px}.sd-state svg{width:18px;height:18px}.sd-state strong{font-size:11px}.sd-metric strong{font-size:19px}}
+@media(max-width:650px){.sd-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:380px){.sd-state{padding:9px 7px;gap:5px}.sd-state svg{width:18px;height:18px}.sd-state strong{font-size:11px}}
 </style></head><body><main>
 <div class="top"><div><div class="eyebrow">LOKALNY PANEL · ESP32-C5</div><h1>Matter2Supla</h1></div><span id="online" class="badge">Łączenie…</span></div>
 <p>Konfiguracja sieci i dodawanie czujników Matter przez Thread.</p>
@@ -79,25 +76,8 @@ body::before{opacity:.12;background-size:390px 130px}
 <div id="connection" class="notice" hidden></div>
 
 <section class="sd-wrap" aria-label="Smart Dashboard">
- <div class="sd-topline"><div><div class="eyebrow">SMART DASHBOARD · STAGE 10F</div><h2>Stan bramki i czujnika</h2></div><a href="#settingsPanel">Przejdź do konfiguracji ↓</a></div>
+ <div class="sd-topline"><div><div class="eyebrow">SMART DASHBOARD · STAGE 11C</div><h2>Stan bramki</h2></div><a href="#settingsPanel">Przejdź do konfiguracji ↓</a></div>
  <div class="sd-grid"><div class="sd-state" id="sd-wifi"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8a15 15 0 0 1 20 0M5 11a11 11 0 0 1 14 0M8.5 14.5a6 6 0 0 1 7 0"/><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none"/></svg><span><strong>Wi-Fi</strong><small id="sd-wifi-state">Offline</small></span></div><div class="sd-state" id="sd-thread"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M9 21h6M8 8a6 6 0 0 0 0 8M16 8a6 6 0 0 1 0 8M5 5a11 11 0 0 0 0 14M19 5a11 11 0 0 1 0 14"/></svg><span><strong>Thread</strong><small id="sd-thread-state">Offline</small></span></div><div class="sd-state" id="sd-matter"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 9h6v6H9zM9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/></svg><span><strong>Matter</strong><small id="sd-matter-state">Offline</small></span></div><div class="sd-state" id="sd-supla"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18H5a4 4 0 0 1-.3-8A7 7 0 0 1 18 9a4.5 4.5 0 0 1 1 9H7z"/></svg><span><strong>SUPLA</strong><small id="sd-supla-state">Offline</small></span></div></div>
- <section class="sd-panel" aria-labelledby="sd-device">
-   <div class="sd-head"><div><h2 id="sd-device">TIMMERFLOTTE</h2><span class="hint" id="sd-model">Oczekiwanie na czujnik</span></div><span class="sd-tag" id="sd-sensor-state">Brak danych</span></div>
-   <div class="sd-metrics">
-     <div class="sd-metric"><span class="sd-label">Temperatura</span><strong id="sd-temp">—</strong></div>
-     <div class="sd-metric"><span class="sd-label">Wilgotność</span><strong id="sd-hum">—</strong></div>
-     <div class="sd-metric"><span class="sd-label">Bateria</span><strong id="sd-bat">—</strong></div>
-   </div>
-   <div class="sd-row"><strong>Siła sygnału Thread</strong><strong id="sd-rssi">— dBm</strong></div>
-   <div class="sd-track" role="progressbar" aria-label="Jakość łącza Thread" aria-valuemin="0" aria-valuemax="3" aria-valuenow="0" id="sd-quality"><div class="sd-fill" id="sd-quality-fill"></div></div>
-   <p class="sd-details" id="sd-quality-text">Brak pomiaru sygnału · jakość —/3</p>
-   <p class="sd-details" id="sd-last">Ostatni raport: — · Subskrypcja: brak danych</p>
- </section>
- <section class="sd-panel sd-plot" aria-labelledby="sd-chart-title">
-   <div class="sd-head"><h2 id="sd-chart-title">Historia temperatury</h2><span class="hint" id="sd-range">Oczekiwanie na pomiary</span></div>
-   <svg viewBox="0 0 620 138" preserveAspectRatio="none" role="img" aria-label="Wykres temperatury od otwarcia strony"><path id="sd-chart-path" d=""/><circle id="sd-chart-point" r="4" cx="-10" cy="-10" fill="#76e1c5"/></svg>
-   <p class="sd-details">Wykres powstaje tylko podczas otwarcia strony. Dane nie są zapisywane do pamięci bramki ani do NVS.</p>
- </section>
 </section>
 <div class="grid" id="settingsPanel"><section class="card"><h2>Sieć Wi-Fi</h2><p class="hint">Wybierz sieć lub wpisz nazwę ręcznie. Błędne ustawienia nie zastąpią poprzedniego połączenia.</p>
 <button id="scan" class="secondary" type="button">Wyszukaj sieci</button><select id="networks" aria-label="Znalezione sieci" hidden><option value="">Wybierz sieć…</option></select>
@@ -112,6 +92,7 @@ body::before{opacity:.12;background-size:390px 130px}
 <div style="overflow-x:auto"><table><thead><tr><th>Urządzenie</th><th>Vendor / Product</th><th>Discriminator</th><th>RSSI</th><th></th></tr></thead><tbody id="bleResults"><tr><td colspan="5">Brak wyników.</td></tr></tbody></table></div>
 <p class="hint">Discriminator pomaga wskazać właściwe urządzenie, ale nie zastępuje kodu Matter. Parowanie wymaga QR albo PIN-u. Skaner wykrywa tylko urządzenia nadające ogłoszenie BLE Matter podczas otwartego okna parowania; nie znajduje Zigbee ani już sparowanych urządzeń bez otwartego okna.</p></section>
 
+<section class="card wide"><h2>SUPLA - lista urządzeń</h2><p class="hint">Przypisane czujniki i ich stałe kanały SUPLA. Numer węzła Matter nie jest numerem kanału SUPLA.</p><div id="suplaDeviceList" class="notice" aria-live="polite">Oczekiwanie na konfigurację SUPLA…</div><p id="suplaSelectedStatus" class="hint" role="status">Kliknij czujnik z listy, aby zobaczyć numer Matter i endpointy poniżej.</p><p id="suplaStatus" class="notice" role="status"></p><details id="suplaConnectionConfig"><summary id="suplaConfigSummary">Ustawienia połączenia SUPLA i kanału 0</summary><form id="suplaForm"><label><input id="suplaEnabled" type="checkbox" style="width:auto"> Włącz integrację SUPLA</label><label for="suplaServer">Serwer z ustawień Twojego konta SUPLA (sama nazwa hosta)</label><input id="suplaServer" maxlength="127" placeholder="np. svr…supla.org" required><label for="suplaEmail">E-mail konta SUPLA</label><input id="suplaEmail" type="email" maxlength="127" required><label for="suplaNode">Numer czujnika Matter</label><input id="suplaNode" type="number" min="1" max="65535" value="1" required><div class="row"><div><label for="suplaTempEp">Endpoint temperatury</label><input id="suplaTempEp" type="number" min="0" max="65534" value="1" required></div><div><label for="suplaHumEp">Endpoint wilgotności</label><input id="suplaHumEp" type="number" min="0" max="65534" value="2" required></div></div><p class="hint">Dla TIMMERFLOTTE: temperatura EP 1, wilgotność EP 2. Numer węzła Matter wybierz według listy sparowanych czujników. Kanał SUPLA ma stały numer 0. Po pierwszym zapisie przypisanie jest zablokowane, aby nie mieszać historii pomiarów. Przed pierwszym połączeniem włącz rejestrację urządzeń w SUPLA Cloud.</p><button id="saveSupla">Zapisz i uruchom ponownie</button></form><p id="suplaResult" role="status"></p></details></section>
 <section class="card wide">
 <h2>Siła sygnału Thread</h2>
 <p class="hint">
@@ -127,12 +108,11 @@ Oczekiwanie na dane Thread…
 <form id="pollForm"><div class="row"><div><label for="pollNode">Czujnik Matter</label><select id="pollNode" required><option value="">Brak czujników</option></select></div><div><label for="pollMinutes">Interwał automatycznych odczytów (minuty)</label><input id="pollMinutes" type="number" min="1" max="1440" step="1" value="1" required></div></div><button id="pollSave" type="submit">Zapisz interwał bez restartu</button></form>
 <p id="pollResult" class="notice" role="status">Domyślnie 1 minuta dla tego testu. Sugerowane 15–30 minut dla czujników bateryjnych. Krótszy czas może zwiększyć zużycie baterii i obciążenie sieci Thread; nie gwarantuje szybszego pomiaru wewnątrz czujnika. Odczyt baterii: co godzinę po sukcesie; przy braku wartości ponowienie co 5 minut podczas następnego odczytu.</p>
 <p id="autoStatus" role="status"></p><div id="sensorWidgets" class="grid"></div><div style="overflow-x:auto"><table><thead><tr><th>Nazwa</th><th>Numer</th><th>Stan dodawania</th></tr></thead><tbody id="devices"></tbody></table></div><p class="hint">„Sparowany” oznacza zakończone dodawanie, nie bieżącą dostępność. Kliknij nazwę czujnika, aby odczytać temperaturę i wilgotność. Inne rodzaje pomiarów nie są jeszcze obsługiwane.</p><div id="sensorDetail" hidden><h3 id="sensorTitle"></h3><button id="readSensor" type="button">Odśwież</button><p id="readStatus" class="notice" role="status" aria-live="polite"></p><div id="readValues"></div><p class="hint">Czujnik bateryjny może odpowiedzieć z opóźnieniem. Odczyt nie zmienia parowania.</p></div><details><summary>Pokaż czujnik sparowany wcześniej przez konsolę</summary><form id="adoptForm"><div class="row"><div><label for="existingName">Nazwa</label><input id="existingName" value="TIMMERFLOTTE" maxlength="48" required></div><div><label for="existingNode">Numer węzła</label><input id="existingNode" type="number" min="1" max="65535" value="1" required></div></div><button class="secondary">Dodaj do listy bez parowania</button></form><p id="adoptResult" role="status"></p></details></section>
-<section class="card wide"><h2>SUPLA · pierwszy czujnik</h2><p id="suplaStatus" class="notice" role="status"></p><form id="suplaForm"><label><input id="suplaEnabled" type="checkbox" style="width:auto"> Włącz integrację SUPLA</label><label for="suplaServer">Serwer z ustawień Twojego konta SUPLA (sama nazwa hosta)</label><input id="suplaServer" maxlength="127" placeholder="np. svr…supla.org" required><label for="suplaEmail">E-mail konta SUPLA</label><input id="suplaEmail" type="email" maxlength="127" required><label for="suplaNode">Numer czujnika Matter</label><input id="suplaNode" type="number" min="1" max="65535" value="1" required><div class="row"><div><label for="suplaTempEp">Endpoint temperatury</label><input id="suplaTempEp" type="number" min="0" max="65534" value="1" required></div><div><label for="suplaHumEp">Endpoint wilgotności</label><input id="suplaHumEp" type="number" min="0" max="65534" value="2" required></div></div><p class="hint">Dla sprawdzonego TIMMERFLOTTE: węzeł 1, temperatura EP 1, wilgotność EP 2. Kanał SUPLA ma stały numer 0. Po pierwszym zapisie przypisanie jest zablokowane, aby nie mieszać historii pomiarów. Przed pierwszym połączeniem włącz rejestrację urządzeń w SUPLA Cloud.</p><button id="saveSupla">Zapisz i uruchom ponownie</button></form><p id="suplaResult" role="status"></p></section>
-<section class="card wide"><h2>IKEA Matter → dodatkowe kanały SUPLA</h2>
-<p class="hint">Sparuj czujnik, poczekaj na identyfikację VID/PID i sprawdź wartości. Dodanie kanału zapisuje trwałe przypisanie i restartuje urządzenie. Kanału nie da się później przypisać do innego typu lub węzła. Kanał 0 TIMMERFLOTTE pozostaje bez zmian.</p>
+<section class="card wide"><h2>Matter → wiele czujników w SUPLA</h2>
+<p class="hint">Każdy sparowany czujnik może mieć oddzielny kanał SUPLA. Wybierz model, poczekaj na poprawne pomiary i dodaj kanał. Numer kanału jest trwały — nie zamieniaj urządzeń miejscami. Kanał 0 i istniejące przypisania zostają zachowane. Bramka odmówi dodania, gdy wyczerpie się RAM, miejsce na dane lub limit SUPLA.</p>
 <p id="extraSuplaStatus" class="notice" role="status"></p>
-<form id="extraSuplaForm"><div class="row"><div><label for="extraNode">Węzeł Matter</label><input id="extraNode" type="number" min="1" max="65535" required placeholder="np. 2"></div>
-<div><label for="extraType">Rodzaj kanału</label><select id="extraType"><option value="2">MYGGSPRAY - ruch</option><option value="3">MYGGBETT - kontakt</option><option value="4">KLIPPBOK - zalanie</option><option value="1">ALPSTUGA - temperatura i wilgotność</option><option value="5">ALPSTUGA - CO₂</option><option value="6">ALPSTUGA - PM2.5</option></select></div></div>
+<form id="extraSuplaForm"><div class="row"><div><label for="extraNode">Sparowany czujnik Matter</label><select id="extraNode" required><option value="">Wybierz czujnik z listy</option></select><p id="extraPickerInfo" class="hint" role="status"></p></div>
+<div><label for="extraType">Rodzaj kanału</label><select id="extraType"><option value="2">MYGGSPRAY - ruch</option><option value="3">MYGGBETT - kontakt</option><option value="4">KLIPPBOK - zalanie</option><option value="1">TIMMERFLOTTE / ALPSTUGA - temperatura i wilgotność</option><option value="5">ALPSTUGA - CO₂</option><option value="6">ALPSTUGA - PM2.5</option></select></div></div>
 <div class="row"><div><label for="extraEp">Endpoint pomiaru</label><input id="extraEp" type="number" min="0" max="65534" value="1" required></div>
 <div><label for="extraAuxEp">Endpoint wilgotności (tylko temp/wilg.)</label><input id="extraAuxEp" type="number" min="0" max="65534" value="1" required></div></div>
 <label><input id="extraInvert" type="checkbox" style="width:auto"> Odwróć stan logiczny (ruch, kontakt, woda)</label>
@@ -167,6 +147,93 @@ function renderBle(j){
 async function bleRead(){if(bleReading||!token)return;bleReading=true;try{const r=await fetch('/api/matter/ble-scan',{headers:{'Content-Type':'application/json','X-M2S-Token':token},cache:'no-store'});const j=await r.json();if(!r.ok)throw Error(j.error||('HTTP '+r.status));renderBle(j)}catch(e){message('bleScanStatus',e.message,true)}finally{bleReading=false}}
 $('bleStart').onclick=async()=>{try{await post('/api/matter/ble-scan',{action:'start'});await bleRead()}catch(e){message('bleScanStatus',e.message,true)}};
 $('bleStop').onclick=async()=>{try{await post('/api/matter/ble-scan',{action:'stop'});if(blePollTimer)clearTimeout(blePollTimer);await bleRead()}catch(e){message('bleScanStatus',e.message,true)}};
+
+// STAGE11B_SELECTABLE_SUPLA: display assigned channels without ever rewriting NVS.
+let suplaSelectedChannel=0;
+let suplaPreviewWasExtra=false;
+function suplaMappings(s){
+ const u=s.supla_status||{},slots=s.supla_channels||[],out=[];
+ if(u.configured&&Number(u.node)>0)
+   out.push({channel:0,node:Number(u.node),type:1,ep:Number(u.temperature_endpoint),aux:Number(u.humidity_endpoint)});
+ for(let i=0;i<slots.length;i++){
+   const v=slots[i];if(!v||!(Number(v.node)>0))continue;
+   out.push({channel:i+1,node:Number(v.node),type:Number(v.type),ep:Number(v.endpoint),aux:Number(v.aux_endpoint),invert:!!v.invert});
+ }
+ return out;
+}
+function showSuplaSelection(s){
+ const u=s.supla_status||{},assignments=suplaMappings(s);
+ if(assignments.length&&!assignments.some(a=>a.channel===suplaSelectedChannel))
+   suplaSelectedChannel=assignments[0].channel;
+ const a=assignments.find(v=>v.channel===suplaSelectedChannel);
+ const extra=!!a&&a.channel!==0;
+ const node=$('suplaNode'),tep=$('suplaTempEp'),hep=$('suplaHumEp');
+ const summary=$('suplaConfigSummary'),button=$('saveSupla');
+ const tempLabel=document.querySelector('label[for="suplaTempEp"]');
+ const humLabel=document.querySelector('label[for="suplaHumEp"]');
+ if(extra){
+   node.value=String(a.node);tep.value=String(a.ep);hep.value=String(a.aux);
+   summary.textContent='Podgląd przypisania — kanał SUPLA '+a.channel+' (bez edycji)';
+   $('suplaSelectedStatus').textContent='Kanał SUPLA '+a.channel+' → numer czujnika Matter '+a.node+'. Przypisanie jest trwałe. Zmiana nie jest dostępna.';
+ }else{
+   // Restore the REAL channel 0 values on return from another channel.
+   // Never overwrite an unsaved first-time setup form during background refresh.
+   if(suplaPreviewWasExtra&&u.configured){
+     node.value=String(u.node);tep.value=String(u.temperature_endpoint);
+     hep.value=String(u.humidity_endpoint);
+   }
+   summary.textContent='Ustawienia połączenia SUPLA i kanału 0';
+   $('suplaSelectedStatus').textContent=a
+     ?'Kanał SUPLA 0 → numer czujnika Matter '+a.node+'. Poniżej ustawienia i przypisanie kanału 0.'
+     :'Nie przypisano jeszcze kanału 0. Możesz skonfigurować pierwszy czujnik.';
+ }
+ node.readOnly=extra||!!u.configured;
+ tep.readOnly=extra||!!u.configured;
+ hep.readOnly=extra||!!u.configured;
+ if(tempLabel)tempLabel.textContent=extra&&a.type!==1?'Endpoint pomiaru':'Endpoint temperatury';
+ if(humLabel)humLabel.textContent=extra&&a.type!==1?'Endpoint pomocniczy':'Endpoint wilgotności';
+ button.disabled=extra||!!s.readings?.busy||!!s.matter?.pair_busy||!!s.network?.testing||!!u.restart_required;
+ button.hidden=extra;
+ suplaPreviewWasExtra=extra;
+}
+function renderSuplaDeviceList(s){
+ const root=$('suplaDeviceList'),u=s.supla_status||{},devices=s.devices||[];
+ const assigned=suplaMappings(s);
+ const signature=JSON.stringify(assigned)+JSON.stringify(devices.map(d=>[d.node,d.name,d.matter_model]));
+ if(root.dataset.signature!==signature){
+   root.replaceChildren();
+   if(!assigned.length){root.textContent='Nie przypisano jeszcze żadnego czujnika. Skonfiguruj kanał 0, następnie dodaj kolejne.';}
+   for(const a of assigned){
+     const d=devices.find(v=>Number(v.node)===a.node);
+     const card=document.createElement('button');card.type='button';card.className='supla-assigned';
+     card.dataset.channel=String(a.channel);
+     const heading=document.createElement('strong');
+     heading.textContent=(d?.name||'Czujnik spoza listy')+' · kanał SUPLA '+a.channel;
+     card.append(heading);
+     const line=document.createElement('p');line.textContent='Numer czujnika Matter: '+a.node+' · '+(d?.matter_model||'model nieustalony');card.append(line);
+     const ep=document.createElement('p');ep.className='hint';
+     const typeNames={1:'Temperatura i wilgotność',2:'Ruch',3:'Kontakt',4:'Zalanie',5:'CO₂',6:'PM2.5'};
+     ep.textContent=(typeNames[a.type]||'Inny')+' · EP '+a.ep+(a.type===1?'/'+a.aux:'');card.append(ep);
+     card.onclick=()=>{
+       suplaSelectedChannel=a.channel;
+       renderSuplaDeviceList(latest||s);
+       showSuplaSelection(latest||s);
+       $('suplaConnectionConfig').open=true;
+     };
+     root.append(card);
+   }
+   const foot=document.createElement('p');foot.id='suplaChannelSummary';foot.className='hint';root.append(foot);
+   root.dataset.signature=signature;
+ }
+ for(const button of root.querySelectorAll('.supla-assigned')){
+   const active=Number(button.dataset.channel)===suplaSelectedChannel;
+   button.classList.toggle('selected',active);
+   button.setAttribute('aria-pressed',active?'true':'false');
+ }
+ const foot=$('suplaChannelSummary');
+ if(foot)foot.textContent='Kanałów SUPLA: '+assigned.length+' · Połączenie: '+(u.online?'Online':'Offline');
+}
+
 function showSupla(s){const u=s.supla_status;if(!u)return;message('suplaStatus',(u.online?'Połączono z SUPLA. ':'')+u.message+' (status '+u.status+')');
  if(!suplaLoaded){$('suplaEnabled').checked=u.enabled;$('suplaServer').value=u.server;$('suplaEmail').value=u.email;$('suplaNode').value=u.node||1;$('suplaTempEp').value=u.temperature_endpoint;$('suplaHumEp').value=u.humidity_endpoint;suplaLoaded=true;}
  if(!u.configured && !$('suplaNode').dataset.edited){
@@ -177,10 +244,49 @@ function showSupla(s){const u=s.supla_status;if(!u)return;message('suplaStatus',
  $('saveSupla').disabled=!!s.readings?.busy||s.matter.pair_busy||s.network.testing||u.restart_required;
  const names={1:'Temperatura/wilgotność',2:'Ruch',3:'Kontakt',4:'Woda',5:'CO₂',6:'PM2.5'};
  const slots=s.supla_channels||[];
+ renderSuplaDeviceList(s);
+ showSuplaSelection(s);
  message('extraSuplaStatus',slots.length?slots.map((v,i)=>'Kanał '+(i+1)+': '+(names[v.type]||'?')+', węzeł '+v.node+', EP '+v.endpoint+(v.type===1?'/'+v.aux_endpoint:'')+(v.invert?' (odwrócony)':'')).join('\n'):'Brak dodatkowych kanałów. Kanał 0 pozostaje bez zmian.');
- $('extraAdd').disabled=!u.online||!s.matter.ready||!!s.readings?.busy||s.matter.pair_busy||s.network.testing||u.restart_required||slots.length>=6;
+ const picker=$('extraNode'),previous=picker.value;
+ // All paired Matter devices remain VISIBLE. Already assigned nodes are
+ // selectable for inspection, but cannot be duplicated in SUPLA.
+ const used=new Map(suplaMappings(s).map(a=>[a.node,a]));
+ const candidates=(s.devices||[]).filter(d=>(d.state===0||d.state===2)&&Number(d.node)>0);
+ const signature=candidates.map(d=>[d.node,d.name,d.state,used.get(Number(d.node))?.channel??'-'].join('|')).join(',');
+ if(picker.dataset.ids!==signature){
+   const first=document.createElement('option');first.value='';first.textContent='Wybierz sparowany czujnik';
+   picker.replaceChildren(first);
+   for(const d of candidates){
+     const mapped=used.get(Number(d.node));
+     const option=document.createElement('option');option.value=String(d.node);
+     option.textContent=d.name+' (Matter '+d.node+')'+(mapped?' · już w SUPLA, kanał '+mapped.channel:'');
+     picker.append(option);
+   }
+   const available=candidates.filter(d=>!used.has(Number(d.node)));
+   picker.value=candidates.some(d=>String(d.node)===previous)?previous:
+      (available.length===1?String(available[0].node):'');
+   picker.dataset.ids=signature;
+   picker.dataset.defaultsFor='';
+ }
+ const selected=candidates.find(d=>String(d.node)===picker.value);
+ const mapped=selected?used.get(Number(selected.node)):null;
+ if(selected&&picker.dataset.defaultsFor!==String(selected.node)){
+   if(mapped){
+     $('extraType').value=String(mapped.type);
+     $('extraEp').value=String(mapped.ep);
+     $('extraAuxEp').value=String(mapped.aux);
+   }else if(selected.matter_model==='TIMMERFLOTTE'||selected.matter_model==='ALPSTUGA'){
+     $('extraType').value='1';$('extraEp').value='1';$('extraAuxEp').value='2';
+   }
+   picker.dataset.defaultsFor=String(selected.node);
+ }
+ $('extraPickerInfo').textContent=!selected
+    ?(candidates.length?'Wybierz czujnik. Już przypisane urządzenia także są widoczne.':'Brak zapisanych lub sparowanych czujników Matter.')
+    :mapped?'Ten czujnik ma już kanał SUPLA '+mapped.channel+'. Wybierz jego kartę powyżej, aby zobaczyć przypisanie. Ponowne dodanie jest zablokowane.'
+    :'Ten czujnik nie ma jeszcze kanału SUPLA — możesz go dodać.';
+ $('extraAdd').disabled=!u.online||!s.matter.ready||!!s.readings?.busy||s.matter.pair_busy||s.network.testing||u.restart_required||slots.length>=Number(s.supla_channels_limit||127)||!picker.value||!!mapped;
 }
-$('suplaForm').onsubmit=async e=>{e.preventDefault();try{
+$('suplaForm').onsubmit=async e=>{e.preventDefault();try{if(suplaSelectedChannel!==0)throw Error('Kanał dodatkowy jest tylko do podglądu. Wróć do kanału 0, aby zapisać ustawienia SUPLA.');
  const enabled=$('suplaEnabled').checked;
  const server=$('suplaServer').value.trim(),email=$('suplaEmail').value.trim();
  const node=Number($('suplaNode').value),tempEp=Number($('suplaTempEp').value),humEp=Number($('suplaHumEp').value);
@@ -193,6 +299,7 @@ $('suplaForm').onsubmit=async e=>{e.preventDefault();try{
  await post('/api/supla/config',{enabled:enabled?1:0,server,email,node,temp_ep:tempEp,hum_ep:humEp});
  message('suplaResult','Zapisano konfigurację SUPLA. Trwa restart.');
  }catch(e){message('suplaResult',e.message,true)}};
+$('extraNode').addEventListener('change',()=>{$('extraNode').dataset.defaultsFor='';if(latest)showSupla(latest)});
 $('extraSuplaForm').onsubmit=async e=>{e.preventDefault();try{
  if(!confirm('Dodać trwale kolejny kanał SUPLA? Numer i typ kanału nie będą mogły być zmienione. Urządzenie uruchomi się ponownie.'))return;
  await post('/api/supla/add-sensor',{node:Number($('extraNode').value),type:Number($('extraType').value),endpoint:Number($('extraEp').value),aux_endpoint:Number($('extraAuxEp').value),invert:$('extraInvert').checked?1:0});
@@ -371,25 +478,11 @@ function renderThreadSignal(s) {
 }
 
 
-/* Stage 10F dashboard uses existing /api/status; no extra Matter requests. */
-const sdHistory=[];
-let sdPreviousUptime=0, sdHistoryNode=0;
+/* STAGE11C_LAYOUT: only four gateway status icons; no sensor preview/chart. */
 function sdStatus(name,on){
  const tile=$('sd-'+name);
  tile.classList.toggle('is-up',!!on);
  $('sd-'+name+'-state').textContent=on?'Online':'Offline';
-}
-function sdAge(value){return Number.isFinite(value)?Math.max(0,Math.floor(value))+' s temu':'brak danych'}
-function sdDrawChart(){
- const path=$('sd-chart-path'),point=$('sd-chart-point'),range=$('sd-range');
- if(!sdHistory.length){path.setAttribute('d','');point.setAttribute('cx',-10);range.textContent='Oczekiwanie na pomiary';return;}
- const values=sdHistory.map(p=>p.temp),min=Math.min(...values),max=Math.max(...values),delta=Math.max(.6,max-min),low=min-delta*.15,high=max+delta*.15;
- const start=sdHistory[0].time,end=sdHistory[sdHistory.length-1].time;
- const xy=p=>({x:12+596*(end===start ? 0.5 : (p.time-start)/(end-start)),y:124-110*(p.temp-low)/(high-low)});
- const points=sdHistory.map(xy);
- path.setAttribute('d',points.map((p,i)=>(i?'L':'M')+p.x.toFixed(2)+' '+p.y.toFixed(2)).join(' '));
- const last=points[points.length-1];point.setAttribute('cx',last.x);point.setAttribute('cy',last.y);
- range.textContent=min.toLocaleString('pl-PL',{maximumFractionDigits:1})+'–'+max.toLocaleString('pl-PL',{maximumFractionDigits:1})+' °C · '+sdHistory.length+' pkt';
 }
 function sdRender(s){
  const thread=['leader','router','child'].includes(s.thread_role);
@@ -400,37 +493,6 @@ function sdRender(s){
  const allUp=!!s.network?.connected&&thread&&!!s.matter?.ready&&!!s.supla_status?.online;
  $('online').textContent=allUp?'SYSTEM OK':'CZĘŚĆ USŁUG OFFLINE';
  $('online').classList.toggle('is-muted',!allUp);
- const nodes=s.devices||[];
- const d=nodes.find(x=>x.node===Number(s.supla_status?.node)&&(x.state===0||x.state===2))||nodes.find(x=>x.state===2)||nodes.find(x=>x.state===0)||nodes[0];
- $('sd-device').textContent=d?.name||'Brak czujnika';
- $('sd-model').textContent=d?'Węzeł Matter '+d.node+' · '+(d.matter_model||'identyfikacja w toku'):'Dodaj czujnik w sekcji konfiguracji';
- const values=d?.readings?.values||[];
- const temp=values.find(v=>v.cluster===1026&&v.valid&&Number.isFinite(v.value));
- const hum=values.find(v=>v.cluster===1029&&v.valid&&Number.isFinite(v.value));
- $('sd-temp').textContent=temp?(temp.value/100).toLocaleString('pl-PL',{maximumFractionDigits:1})+' °C':'—';
- $('sd-hum').textContent=hum?(hum.value/100).toLocaleString('pl-PL',{maximumFractionDigits:1})+' %':'—';
- $('sd-bat').textContent=d?.readings?.battery_valid?Number(d.readings.battery_percent).toLocaleString('pl-PL',{maximumFractionDigits:1})+' %':'—';
- const sub=d?.subscription;
- const ages=[temp?.age_s,hum?.age_s,sub?.reporting?sub?.last_report_age_s:null].filter(Number.isFinite);
- const age=ages.length?Math.min(...ages):null;
- const connected=!!d&&(d.state===0||d.state===2)&&Number.isFinite(age)&&age<=900;
- const tag=$('sd-sensor-state');tag.classList.toggle('up',connected);tag.textContent=connected?'Online · świeże dane':'Offline / brak świeżych danych';
- $('sd-last').textContent='Ostatni kontakt Matter: '+sdAge(age)+' · Subskrypcja: '+(sub?.reporting?'raportuje':sub?.requested?'uruchamiana':'brak raportów');
- const children=s.thread_children||[];
- const unique=s.thread_signal_status==='ok'&&nodes.length===1&&children.length===1&&d?.node===nodes[0].node;
- const child=unique?children[0]:null;
- const avg=child?.average_rssi_dbm;
- const quality=child&&Number.isFinite(child.link_quality_in)?Math.max(0,Math.min(3,child.link_quality_in)):null;
- $('sd-rssi').textContent=Number.isFinite(avg)?avg+' dBm':'— dBm';
- $('sd-quality-fill').style.width=quality===null?'0%':(quality/3*100)+'%';
- $('sd-quality').setAttribute('aria-valuenow',quality===null?'0':String(quality));
- $('sd-quality-text').textContent=child?'Jakość '+(quality===null?'—':quality)+'/3 · ostatni RSSI '+(Number.isFinite(child.last_rssi_dbm)?child.last_rssi_dbm+' dBm':'—')+' · kontakt '+sdAge(child.last_heard_s)+(child.sleepy?' · urządzenie usypiane':''):'Sygnał nieprzypisany do czujnika. Patrz sekcja Siła sygnału Thread poniżej.';
- if(s.uptime_s<sdPreviousUptime||d?.node!==sdHistoryNode){sdHistory.length=0;sdHistoryNode=d?.node||0;}
- sdPreviousUptime=s.uptime_s;
- if(temp){const pointTime=Date.now()-Math.max(0,temp.age_s)*1000;const prev=sdHistory[sdHistory.length-1];
-  if(!prev||pointTime-prev.time>=60000){sdHistory.push({time:pointTime,temp:temp.value/100});if(sdHistory.length>288)sdHistory.shift();}
- }
- sdDrawChart();
 }
 $('sd-qr-toggle').onclick=()=>{
  const input=$('qr');const reveal=input.type==='password';input.type=reveal?'text':'password';
@@ -454,7 +516,7 @@ const ns=s.network;const states={setup_ap:'Połącz się z siecią konfiguracyjn
 message('pairResult',s.matter.pair_busy?'Parowanie trwa. Poczekaj; nie uruchamiaj ponownie.':(s.matter.pair_result?pairStates[s.matter.pair_result]:(s.matter.start_error?'Błąd uruchomienia kontrolera. Zapisz log i uruchom urządzenie ponownie.':s.matter.ready?'Gotowy do dodawania czujnika.':'Kontroler uruchomi się po połączeniu Wi-Fi i zamknięciu sieci konfiguracji.')),s.matter.pair_result===3);
 const body=$('devices');body.replaceChildren();for(const d of s.devices){const tr=document.createElement('tr');for(const v of [d.name,d.node,['Zapisany — sprawdź odczytem','Parowanie','Sparowany','Próba nieudana'][d.state]||'Nieznany']){const td=document.createElement('td');if(tr.children.length===0){const b=document.createElement('button');b.type='button';b.className='secondary';b.textContent=v;b.onclick=()=>selectSensor(d);td.append(b)}else td.textContent=v;tr.append(td)}body.append(tr)}if(!s.devices.length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=3;td.textContent='Brak wpisów. Dodaj nowy czujnik lub pokaż wcześniej sparowany.';tr.append(td);body.append(tr)}
 syncPollSettings(s);showReadings(s);updateWidgets(s);renderThreadSignal(s);showSupla(s);sdRender(s);
-}catch(e){$('online').textContent='● Brak łączności';$('online').classList.add('is-muted');for(const key of ['wifi','thread','matter','supla'])sdStatus(key,false);$('sd-sensor-state').classList.remove('up');$('sd-sensor-state').textContent='Offline / brak kontaktu';if(selectedNode){$('readSensor').disabled=true;message('readStatus','Brak łączności z panelem. Wyświetlone wartości mogą być nieaktualne.',true);}}finally{refreshBusy=false}}
+}catch(e){$('online').textContent='● Brak łączności';$('online').classList.add('is-muted');for(const key of ['wifi','thread','matter','supla'])sdStatus(key,false);if(selectedNode){$('readSensor').disabled=true;message('readStatus','Brak łączności z panelem. Wyświetlone wartości mogą być nieaktualne.',true);}}finally{refreshBusy=false}}
 function decodeQR(input){const q=input.replace(/\s/g,'').toUpperCase();if(!q.startsWith('MT:'))throw Error('Kod QR musi zaczynać się od MT:.');const alphabet='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-.';const encoded=q.slice(3),bytes=[];if(encoded.length>512)throw Error('Zbyt długi kod QR.');for(let i=0;i<encoded.length;i+=5){const chunk=encoded.slice(i,i+5),size={2:1,4:2,5:3}[chunk.length];if(!size)throw Error('Nieprawidłowa długość QR.');let v=0,m=1;for(const c of chunk){const d=alphabet.indexOf(c);if(d<0)throw Error('Nieprawidłowy znak w QR.');v+=d*m;m*=38}if(v>=2**(8*size))throw Error('Nieprawidłowy QR.');for(let j=0;j<size;j++){bytes.push(v&255);v=Math.floor(v/256)}}if(bytes.length<11)throw Error('Niepełny QR.');let bits=0n;for(let i=10;i>=0;i--)bits=(bits<<8n)|BigInt(bytes[i]);if((bits&7n)!==0n || ((bits>>84n)&15n)!==0n)throw Error('Nieobsługiwana wersja QR.');return {pin:Number((bits>>57n)&((1n<<27n)-1n)),discriminator:Number((bits>>45n)&4095n)}}
 $('wifiForm').onsubmit=async e=>{e.preventDefault();try{const ssid=$('ssid').value,password=$('password').value;if(utf8(ssid)<1||utf8(ssid)>32)throw Error('SSID musi mieć 1–32 bajty.');if(utf8(password)>63||(password.length&&utf8(password)<8))throw Error('Hasło musi mieć 8–63 bajty lub być puste.');if(latest?.network.connected&&!confirm('Zmienić sieć Wi-Fi? Panel może chwilowo stracić połączenie.'))return;await post('/api/wifi',{ssid,password});$('password').value='';message('wifiResult','Test połączenia rozpoczęty. W razie utraty łączności otwórz 192.168.4.1 w sieci konfiguracji.');}catch(e){message('wifiResult',e.message,true)}};
 $('start').onclick=async()=>{try{await post('/api/matter/start',{});refresh()}catch(e){message('pairResult',e.message,true)}};
@@ -617,7 +679,7 @@ static cJSON *readings_json(const m2s_readings_t &r){
 static esp_err_t status_get(httpd_req_t *req){
     if(!allowed_host(req))return error_reply(req,"Nieprawidlowy adres panelu.","403 Forbidden");
     cJSON *j=cJSON_CreateObject();if(!j)return json_reply(req,nullptr);
-    cJSON_AddStringToObject(j,"firmware","0.9.3-stage10f-smart-dashboard");cJSON_AddStringToObject(j,"token",token);
+    cJSON_AddStringToObject(j,"firmware","0.9.3-stage11c-compact-ui");cJSON_AddStringToObject(j,"token",token);
     const char *role="unavailable";
     if(esp_openthread_lock_acquire(pdMS_TO_TICKS(100))){otInstance *instance=esp_openthread_get_instance();if(instance)role=role_name(otThreadGetDeviceRole(instance));esp_openthread_lock_release();}
     cJSON_AddStringToObject(j,"thread_role",role);
@@ -634,6 +696,7 @@ static esp_err_t status_get(httpd_req_t *req){
     cJSON_AddNumberToObject(j,"backbone_index",backbone?esp_netif_get_netif_impl_index(backbone):-1);
     m2s_supla_status_t ss{};m2s_supla_status(&ss);cJSON_AddBoolToObject(j,"supla",ss.online);
     cJSON *su=cJSON_AddObjectToObject(j,"supla_status");if(!su){cJSON_Delete(j);return json_reply(req,nullptr);}
+    cJSON_AddNumberToObject(j,"supla_channels_limit",M2S_SUPLA_EXTRA_LIMIT);
     cJSON_AddBoolToObject(su,"enabled",ss.enabled);cJSON_AddBoolToObject(su,"configured",ss.configured);cJSON_AddBoolToObject(su,"online",ss.online);cJSON_AddBoolToObject(su,"restart_required",ss.restart_required);
     cJSON_AddNumberToObject(su,"node",ss.node);cJSON_AddNumberToObject(su,"temperature_endpoint",ss.temperature_endpoint);cJSON_AddNumberToObject(su,"humidity_endpoint",ss.humidity_endpoint);cJSON_AddNumberToObject(su,"status",ss.status);cJSON_AddStringToObject(su,"server",ss.server);cJSON_AddStringToObject(su,"email",ss.email);cJSON_AddStringToObject(su,"message",ss.message);
     m2s_supla_sensor_slot_t slots[M2S_SUPLA_EXTRA_LIMIT]{};
@@ -773,7 +836,7 @@ static esp_err_t post_handler(httpd_req_t *req){
         return error_reply(req,msg,result==ESP_ERR_INVALID_STATE?"409 Conflict":"400 Bad Request");
     }
     if(result!=ESP_OK && strcmp(req->uri,"/api/supla/add-sensor")==0)
-        return error_reply(req,"Nie mozna dodac kanalu: sprawdz model IKEA, node, endpoint, aktualny pomiar, limit kanalow i stan SUPLA. Przypisanie nie zostalo zmienione.",result==ESP_ERR_INVALID_STATE?"409 Conflict":"400 Bad Request");
+        return error_reply(req,result==ESP_ERR_NO_MEM?"Za malo pamieci RAM na kolejny kanal SUPLA. Konfiguracja bez zmian.":"Nie mozna dodac kanalu: sprawdz model IKEA, node, endpoint, aktualny pomiar, limit kanalow i stan SUPLA. Przypisanie nie zostalo zmienione.",result==ESP_ERR_INVALID_STATE?"409 Conflict":"400 Bad Request");
     if(result!=ESP_OK && strcmp(req->uri,"/api/matter/ble-scan")==0)return error_reply(req,result==ESP_ERR_NOT_SUPPORTED?"Skaner BLE wymaga aktywnego stosu NimBLE.":result==ESP_ERR_INVALID_STATE?"BLE niedostepny: trwa inne zadanie, brak pamieci lub host BLE nie jest gotowy.":"Nie udalo sie zakonczyc skanowania BLE.",result==ESP_ERR_INVALID_STATE?"409 Conflict":"400 Bad Request");
     if(result!=ESP_OK)return error_reply(req,result==ESP_ERR_NO_MEM?"Brak pamieci lub miejsca na liscie czujnikow.":result==ESP_ERR_INVALID_STATE?"Operacja niedostepna: trwa inne zadanie lub kontroler/siec nie jest gotowy.":"Sprawdz nazwe, haslo i dane parowania.",result==ESP_ERR_INVALID_STATE?"409 Conflict":"400 Bad Request");
     cJSON *reply=cJSON_CreateObject();if(reply){cJSON_AddBoolToObject(reply,"accepted",true);if(node)cJSON_AddNumberToObject(reply,"node",node);}return json_reply(req,reply,"202 Accepted");

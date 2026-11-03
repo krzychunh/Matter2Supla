@@ -15,7 +15,9 @@ typedef struct {
 } m2s_supla_status_t;
 // Channel 0 always remains the original TIMMERFLOTTE thermometer/hygrometer.
 // New channels are appended and their type/node/endpoints are immutable.
-#define M2S_SUPLA_EXTRA_LIMIT 6
+// SUPLA protocol limit is 128 channels total: channel 0 + up to 127 extras.
+// Actual capacity is additionally bounded by Matter registry, memory and NVS.
+#define M2S_SUPLA_EXTRA_LIMIT 127
 typedef enum {
  M2S_SUPLA_SENSOR_TH=1,
  M2S_SUPLA_SENSOR_MOTION=2,
