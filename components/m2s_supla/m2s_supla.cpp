@@ -19,6 +19,7 @@
 #include "esp_system.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
+#include <supla-common/proto.h>
 #include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -40,13 +41,28 @@ struct Config {
  char guid[SUPLA_GUID_SIZE]{},auth[SUPLA_AUTHKEY_SIZE]{};
 };
 Config config;
-struct SlotStore {
- uint32_t magic=0x4d325337; // M2S7, kept separate from original Config blob.
+// M2S7 saved exactly six slots. Keep this structure for non-destructive migration.
+struct LegacySlotStore {
+ uint32_t magic=0x4d325337;
  uint8_t count=0;
  uint8_t reserved[3]{};
+ m2s_supla_sensor_slot_t slots[6]{};
+};
+// New format has 127 slots, stored separately in NVS. Original key is untouched.
+struct SlotStore {
+ uint32_t magic=0x4d325338; // M2S8, version 2 of channel map.
+ uint16_t count=0;
+ uint16_t reserved=0;
  m2s_supla_sensor_slot_t slots[M2S_SUPLA_EXTRA_LIMIT]{};
 };
-SlotStore slot_store;
+static_assert(M2S_SUPLA_EXTRA_LIMIT+1<=SUPLA_CHANNELMAXCOUNT,
+              "Too many channels for SUPLA protocol");
+SlotStore *slot_store=nullptr;
+SlotStore *make_store(){
+ void *p=heap_caps_calloc(1,sizeof(SlotStore),MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+ if(!p)return nullptr;
+ return new(p) SlotStore;
+}
 bool slots_corrupt=false;
 portMUX_TYPE mux=portMUX_INITIALIZER_UNLOCKED;
 StaticSemaphore_t config_guard_storage;
@@ -106,8 +122,13 @@ public:
 };
 void worker(void*){
  // Copy immutable running configuration. Saved changes take effect only after reboot.
- Config running;SlotStore runningSlots;
- xSemaphoreTake(config_guard,portMAX_DELAY);running=config;runningSlots=slot_store;xSemaphoreGive(config_guard);
+ Config running;
+ SlotStore *runningSlots=make_store();
+ if(!runningSlots){info(-103,"Brak PSRAM na konfiguracje kanalow SUPLA");for(;;)vTaskDelay(pdMS_TO_TICKS(1000));}
+ xSemaphoreTake(config_guard,portMAX_DELAY);
+ running=config;
+ if(slot_store)*runningSlots=*slot_store;
+ xSemaphoreGive(config_guard);
  if(slots_corrupt){info(-106,"Niezgodna konfiguracja kanalow; nie rejestruje SUPLA");for(;;)vTaskDelay(pdMS_TO_TICKS(1000));}
  ExistingWifi wifi;
  bool time_started=false;
@@ -142,10 +163,15 @@ void worker(void*){
  sensor->setInitialCaption("Matter temperatura i wilgotnosc");
  sensor->setRefreshIntervalMs(1000);
  sensor->getChannel()->setStateOffline();
- ExtraChannel extra[M2S_SUPLA_EXTRA_LIMIT]{};
+ ExtraChannel *extra=nullptr;
+ if(runningSlots->count){
+   extra=static_cast<ExtraChannel*>(heap_caps_calloc(
+      runningSlots->count,sizeof(ExtraChannel),MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT));
+   if(!extra){info(-103,"Brak PSRAM na kanaly SUPLA");for(;;)vTaskDelay(pdMS_TO_TICKS(1000));}
+ }
  // Channel IDs 1..N are explicit and append-only, never repurposed after NVS save.
- for(unsigned i=0;i<runningSlots.count;i++){
-   const auto &slot=runningSlots.slots[i];
+ for(unsigned i=0;i<runningSlots->count;i++){
+   const auto &slot=runningSlots->slots[i];
    ExtraChannel &ch=extra[i];
    if(slot.type==M2S_SUPLA_SENSOR_TH){
      ch.thermo=new(std::nothrow) Supla::Sensor::VirtualThermHygroMeter;
@@ -205,8 +231,8 @@ void worker(void*){
      }
      sensor->setTemp(t);sensor->setHumi(h);
      if(tv&&hv)sensor->getChannel()->setStateOnline();else sensor->getChannel()->setStateOffline();
-     for(unsigned i=0;i<runningSlots.count;i++){
-       const auto &slot=runningSlots.slots[i];const auto &ch=extra[i];
+     for(unsigned i=0;i<runningSlots->count;i++){
+       const auto &slot=runningSlots->slots[i];const auto &ch=extra[i];
        m2s_readings_t sr{};bool available=known_node(slot.node) && m2s_readings_cached(slot.node,&sr);
        if(!available||!sr.vendor_valid||!sr.product_valid||
           !supported_slot(slot,m2s_ikea_sensor(sr.vendor_id,sr.product_id))){
@@ -244,21 +270,36 @@ extern "C" void m2s_supla_init(){
    auto e=nvs_get_blob(h,"config",&config,&size);nvs_close(h);
    if(e!=ESP_OK||size!=sizeof(config)||config.magic!=0x4d325331)config=Config{};
  }
- size=sizeof(slot_store);
- if(nvs_open("m2s_ikea",NVS_READONLY,&h)==ESP_OK){
-   const esp_err_t e=nvs_get_blob(h,"channels",&slot_store,&size);nvs_close(h);
-   if(e==ESP_ERR_NVS_NOT_FOUND)slot_store=SlotStore{};
-   else if(e!=ESP_OK || size!=sizeof(slot_store) || slot_store.magic!=0x4d325337 ||
-           slot_store.count>M2S_SUPLA_EXTRA_LIMIT){
-     slots_corrupt=true;slot_store=SlotStore{};
-     ESP_LOGE(TAG,"Extra channel configuration invalid; refusing new mapping");
+ slot_store=make_store();
+ if(!slot_store){slots_corrupt=true;ESP_LOGE(TAG,"No PSRAM for SUPLA channel store");}
+ else if(nvs_open("m2s_ikea",NVS_READONLY,&h)==ESP_OK){
+   size_t v2size=sizeof(*slot_store);
+   esp_err_t e=nvs_get_blob(h,"channels2",slot_store,&v2size);
+   if(e==ESP_ERR_NVS_NOT_FOUND){
+     // Stage10F migration: previously stored maximum six slots.
+     LegacySlotStore legacy{};
+     size_t oldsize=sizeof(legacy);
+     e=nvs_get_blob(h,"channels",&legacy,&oldsize);
+     if(e==ESP_OK && oldsize==sizeof(legacy) && legacy.magic==0x4d325337 && legacy.count<=6){
+       slot_store->count=legacy.count;
+       for(unsigned i=0;i<legacy.count;i++)slot_store->slots[i]=legacy.slots[i];
+       ESP_LOGI(TAG,"Migrated %u legacy SUPLA channels in memory",(unsigned)legacy.count);
+     }else if(e!=ESP_ERR_NVS_NOT_FOUND){
+       slots_corrupt=true;
+       ESP_LOGE(TAG,"Bad legacy channel data, preserving NVS");
+     }
+   }else if(e!=ESP_OK || v2size!=sizeof(*slot_store) ||
+            slot_store->magic!=0x4d325338 || slot_store->count>M2S_SUPLA_EXTRA_LIMIT){
+     slots_corrupt=true;
+     ESP_LOGE(TAG,"Bad v2 SUPLA channels, preserving NVS");
    }
+   nvs_close(h);
  }
- if(!slots_corrupt)for(unsigned i=0;i<slot_store.count;i++){
-   const auto &s=slot_store.slots[i];
+ if(!slots_corrupt && slot_store)for(unsigned i=0;i<slot_store->count;i++){
+   const auto &s=slot_store->slots[i];
    if(!s.node||s.node>65535||s.endpoint==65535||s.aux_endpoint==65535||
       s.type<M2S_SUPLA_SENSOR_TH||s.type>M2S_SUPLA_SENSOR_PM25||s.invert>1){
-     slots_corrupt=true;slot_store=SlotStore{};
+     slots_corrupt=true;
      ESP_LOGE(TAG,"Invalid saved IKEA channel; SUPLA registration blocked");break;
    }
  }
@@ -272,15 +313,15 @@ extern "C" void m2s_supla_init(){
 
 }
 extern "C" size_t m2s_supla_slots_snapshot(m2s_supla_sensor_slot_t *out,size_t capacity){
- if(!config_guard || !out)return 0;
+ if(!config_guard || !out || !slot_store)return 0;
  xSemaphoreTake(config_guard,portMAX_DELAY);
- const size_t count=capacity<slot_store.count?capacity:slot_store.count;
- for(size_t i=0;i<count;i++)out[i]=slot_store.slots[i];
+ const size_t count=capacity<slot_store->count?capacity:slot_store->count;
+ for(size_t i=0;i<count;i++)out[i]=slot_store->slots[i];
  xSemaphoreGive(config_guard);return count;
 }
 extern "C" esp_err_t m2s_supla_add_sensor(uint32_t node,uint8_t type,uint16_t endpoint,uint16_t aux_endpoint,bool invert){
- if(!config_guard||!restart_timer||!node||node>65535||endpoint==65535||aux_endpoint==65535 ||
-    !known_node(node))return ESP_ERR_INVALID_ARG;
+ if(!config_guard||!restart_timer||!slot_store||!node||node>65535||
+    endpoint==65535||aux_endpoint==65535||!known_node(node))return ESP_ERR_INVALID_ARG;
  m2s_readings_t r{};
  if(!m2s_readings_cached(node,&r)||!r.vendor_valid||!r.product_valid)return ESP_ERR_INVALID_STATE;
  portENTER_CRITICAL(&mux);const bool supla_online=state.online;portEXIT_CRITICAL(&mux);
@@ -305,19 +346,39 @@ extern "C" esp_err_t m2s_supla_add_sensor(uint32_t node,uint8_t type,uint16_t en
  }
  if(!seen)return ESP_ERR_INVALID_STATE;
  xSemaphoreTake(config_guard,portMAX_DELAY);
- if(slots_corrupt||state.restart_required||slot_store.count==M2S_SUPLA_EXTRA_LIMIT||
+ if(slots_corrupt||state.restart_required||slot_store->count>=M2S_SUPLA_EXTRA_LIMIT||
     !config.enabled||!config.node||node==config.node){xSemaphoreGive(config_guard);return ESP_ERR_INVALID_STATE;}
- for(unsigned i=0;i<slot_store.count;i++){
-  const auto &previous=slot_store.slots[i];
+ // Reserve internal memory for Matter, SRPC/TLS and Thread. Hard-limit is
+ // the SUPLA protocol; available RAM may force an earlier stop.
+ if(heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)<10000 ||
+    heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)<1600){
+   xSemaphoreGive(config_guard);return ESP_ERR_NO_MEM;
+ }
+ for(unsigned i=0;i<slot_store->count;i++){
+  const auto &previous=slot_store->slots[i];
   if(previous.node==slot.node && previous.type==slot.type){
    xSemaphoreGive(config_guard);return ESP_ERR_INVALID_STATE;
   }
  }
- SlotStore next=slot_store;next.slots[next.count++]=slot;
+ SlotStore *next=make_store();
+ if(!next){xSemaphoreGive(config_guard);return ESP_ERR_NO_MEM;}
+ *next=*slot_store;
+ next->slots[next->count++]=slot;
  nvs_handle_t h;esp_err_t e=nvs_open("m2s_ikea",NVS_READWRITE,&h);
- if(e==ESP_OK){e=nvs_set_blob(h,"channels",&next,sizeof(next));if(e==ESP_OK)e=nvs_commit(h);nvs_close(h);}
- if(e==ESP_OK){slot_store=next;portENTER_CRITICAL(&mux);state.restart_required=true;portEXIT_CRITICAL(&mux);
-   e=esp_timer_start_once(restart_timer,2000000);}
+ if(e==ESP_OK){
+   e=nvs_set_blob(h,"channels2",next,sizeof(*next));
+   if(e==ESP_OK)e=nvs_commit(h);
+   nvs_close(h);
+ }
+ if(e==ESP_OK){
+   SlotStore *previous=slot_store;
+   slot_store=next;
+   heap_caps_free(previous);
+   portENTER_CRITICAL(&mux);state.restart_required=true;portEXIT_CRITICAL(&mux);
+   e=esp_timer_start_once(restart_timer,2000000);
+   ESP_LOGI(TAG,"APPEND_CHANNEL number=%u node=%lu type=%u NVS=v2 reboot=%d",
+     (unsigned)slot_store->count,(unsigned long)node,(unsigned)type,(int)e);
+ }else heap_caps_free(next);
  xSemaphoreGive(config_guard);return e;
 }
 extern "C" esp_err_t m2s_supla_configure(bool enabled,const char *server,const char *email,uint32_t node,uint16_t temp_ep,uint16_t hum_ep){
