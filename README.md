@@ -1,186 +1,105 @@
-# Matter2Supla Beta
+# Matter2Supla — Matter over Thread → SUPLA CLOUD
 
-**Bramka Matter over Thread → SUPLA oparta na ESP32-C5**  
-**Wydanie:** Stage 10F — Smart Dashboard + QR Preview  
-**Repozytorium:** [krzychunh/Matter2Supla](https://github.com/krzychunh/Matter2Supla)
+**Status:** Beta · **Aktualizacja:** Stage11E S7.16 FIX1 · **Sprzęt testowy:** ESP32-C5 (Flash 32 MB, PSRAM 8 MB)
 
-Matter2Supla pozwala połączyć zgodny czujnik **Matter over Thread** z systemem **SUPLA**. Bramka odbiera pomiary przez Thread i przekazuje temperaturę oraz wilgotność do SUPLA przez Wi-Fi. Pierwszym urządzeniem, na którym sprawdzono komunikację, jest **IKEA TIMMERFLOTTE**.
+Matter2Supla to eksperymentalna bramka integrująca wybrane czujniki **Matter over Thread** z **SUPLA CLOUD**. Projekt udostępnia lokalny panel WWW do konfiguracji Wi-Fi, dodawania czujników Matter, monitorowania ich odczytów i przypisywania stałych kanałów SUPLA.
 
-> **Status: Beta.** To niezależny, rozwijany projekt hobbystyczny, a nie oficjalny produkt IKEA ani SUPLA. Najlepiej przetestowaną konfiguracją jest ESP32-C5 + IKEA TIMMERFLOTTE. Obsługa innych czujników wymaga weryfikacji.
+> **Ważne:** S7.16 FIX1 skompilowano dla ESP32-C5 z ESP-IDF 5.5.6. Kompilacja całego projektu wyłącznie ze stanu publicznego repozytorium oraz końcowe testy S7.16 na urządzeniu wymagają jeszcze niezależnego potwierdzenia. W repozytorium mogą być potrzebne dodatkowe elementy środowiska ESP-Matter/OpenThread i konfiguracji budowania.
 
-## Co potrafi bramka?
+## Najważniejsze możliwości
 
-- Łączy się z domowym Wi-Fi i udostępnia lokalny panel WWW.
-- Działa jako kontroler Matter i obsługuje komunikację Thread z czujnikiem.
-- Paruje czujnik przy użyciu tekstowej zawartości kodu QR `MT:…` albo poprawnego PIN-u Matter i pełnego discriminator.
-- Odbiera **automatyczne raporty temperatury i wilgotności** przez subskrypcję Matter; ma też konfigurowalny odczyt zapasowy.
-- Przekazuje temperaturę i wilgotność do SUPLA Cloud.
-- Pokazuje baterię czujnika (jeśli udało się odebrać pomiar).
-- Udostępnia **Smart Dashboard** z ikonami Wi-Fi, Thread, Matter i SUPLA: zielone oznaczają stan aktywny, szare — nieaktywny.
-- Pokazuje RSSI i jakość łącza Thread (0–3), gdy czujnik jest bezpośrednim dzieckiem bramki i można przypisać pomiar.
-- Wyświetla prosty wykres temperatury zbierany podczas otwartej strony WWW.
-- Oferuje skaner ogłoszeń **Matter BLE** oraz podgląd i kopiowanie tekstu QR w formularzu parowania.
+- Lokalny panel WWW z zakładkami **Pulpit, Czujniki, Parowanie, SUPLA, Sieć, System i Pomoc**.
+- Parowanie wybranych czujników Matter over Thread przez **Skaner Matter BLE i kod 11-cyfrowy** lub tekstowy kod QR zaczynający się od `MT:`.
+- Widżet skanera BLE obok parowania na stronie głównej; ten sam skaner używany w zakładce Parowanie.
+- Widoczny kod 11-cyfrowy podczas wpisywania (uważaj, by nie udostępniać go w zrzutach ekranu).
+- Pomoc krok po kroku z ilustracjami SVG przechowywanymi we Flash (panel HTML gzip).
+- Mapowanie obsługiwanych pomiarów Matter na stałe kanały SUPLA, z kontrolą przypisania kanału 0.
+- Odzyskiwanie Wi-Fi po zmianie sieci: konfiguracyjny AP pozostaje dostępny, gdy zapamiętana sieć nie istnieje.
+- Diagnostyka statusu przez `/api/status`.
 
-**Uwaga:** historia wykresu istnieje tylko w pamięci otwartej przeglądarki. Kod `MT:…` nie jest przechowywany jako historia QR i nie można go odzyskać po wcześniejszym parowaniu.
+**Zakres kompatybilności:** testowane były m.in. czujniki IKEA TIMMERFLOTTE, MYGGBETT, KLIPPBOK i MYGGSPRAY; zgodność każdego modelu, endpointów i łańcucha certyfikatów należy sprawdzić osobno. Aktualny panel informuje o obsłudze PAA IKEA G1. Nie oznacza to zgodności ze wszystkimi urządzeniami Matter.
 
-## Jak to działa?
+## Galeria Matter2Supla S7.16 — pięć zaakceptowanych grafik
 
-```text
-IKEA TIMMERFLOTTE
-     │ Matter over Thread (IEEE 802.15.4)
-     ▼
-ESP32-C5 — Matter2Supla
-     │ Wi-Fi / Internet
-     ▼
-SUPLA Cloud
-     │
-     ▼
-Aplikacja SUPLA / przeglądarka
-```
+Poniżej znajdują się **dokładnie te same pięć grafik**, które zostały wcześniej przygotowane i zaakceptowane do prezentacji projektu. Zachowują wygląd białego panelu Matter2Supla, zielone akcenty SUPLA, zakładki oraz znak wodny „Matter2Supla - Beta”.
 
-## Wymagania
+**Ważne:** są to grafiki wygenerowane na podstawie interfejsu, a nie dosłowne zrzuty ekranu z działającego ESP32-C5. Niektóre nazwy lub teksty mogą się różnić od rzeczywistych pól panelu.
 
-- Płytka **ESP32-C5** z wgranym Matter2Supla. Konfiguracja używana podczas prac: **32 MB flash, 8 MB PSRAM**.
-- Stabilne zasilanie bramki.
-- Domowa sieć Wi-Fi 2,4 GHz z dostępem do Internetu.
-- Czujnik **IKEA TIMMERFLOTTE** z bateriami oraz jego kod QR Matter.
-- Konto w [SUPLA Cloud](https://cloud.supla.org).
-- Telefon albo komputer z przeglądarką WWW.
+### 1. Pulpit — parowanie Matter i skaner BLE
 
-## Pierwsze uruchomienie — Wi-Fi
+![Matter2Supla S7.16 — Pulpit](docs/images/01-pulpit-wizualizacja.png)
 
-1. Włącz zasilanie bramki ESP32-C5.
-2. Jeśli Wi-Fi nie jest jeszcze skonfigurowane, połącz telefon lub komputer z siecią **`Matter2Supla-XXXX`**.
-3. Domyślne hasło tej sieci konfiguracyjnej to **`12345678`**.
-4. Otwórz adres **http://192.168.4.1**.
-5. W sekcji **„Sieć Wi-Fi”** kliknij **„Wyszukaj sieci”** albo ręcznie wpisz SSID.
-6. Wpisz hasło domowej sieci i wybierz **„Sprawdź i zapisz Wi-Fi”**.
-7. Po połączeniu bramka otrzyma adres IP z routera. Połącz się ponownie z domowym Wi-Fi i otwórz ten adres w przeglądarce.
+### 2. Parowanie — Skaner Matter BLE i 11-cyfrowy kod
 
-> Adres `192.168.4.1` dotyczy trybu konfiguracyjnego, nie docelowego adresu w domowej sieci. Docelowe IP można sprawdzić w routerze. Nie wystawiaj panelu konfiguracyjnego bezpośrednio do Internetu.
+![Matter2Supla S7.16 — Parowanie](docs/images/02-parowanie-wizualizacja.png)
 
-## Dodawanie IKEA TIMMERFLOTTE
+### 3. SUPLA — ustawienia i mapowanie czujników na kanały
 
-1. Włóż baterie do TIMMERFLOTTE i uruchom **tryb parowania Matter** zgodnie z instrukcją czujnika. W razie potrzeby ponownie otwórz okno parowania przyciskiem systemowym.
-2. W panelu Matter2Supla sprawdź stan kontrolera Matter. Jeśli jest wyłączony, użyj **„Uruchom kontroler”** i poczekaj na gotowość Thread/Matter.
-3. W sekcji **„Dodaj czujnik IKEA Matter”** wpisz nazwę, np. `TIMMERFLOTTE Salon`.
-4. Odczytaj **tekstową zawartość** kodu QR Matter (zaczyna się od **`MT:`**) i wklej ją w pole **„Treść kodu QR (MT:…)”**.
-5. Możesz użyć **„Pokaż treść QR”** do sprawdzenia wpisu lub **„Kopiuj MT:…”**. Kod traktuj jako poufne dane parowania.
-6. Kliknij **„Dodaj czujnik”**. Nie restartuj bramki podczas parowania.
-7. Po udanym parowaniu sprawdź listę czujników i poczekaj na pierwsze pomiary.
+![Matter2Supla S7.16 — Integracja SUPLA](docs/images/03-supla-wizualizacja.png)
 
-Alternatywnie formularz pozwala wpisać **PIN Matter i pełny discriminator (0–4095)**. Sam discriminator wykryty przez skaner BLE nie wystarcza do parowania. Najprościej użyć pełnego `MT:…`.
+### 4. Pomoc — parowanie przez BLE i kod 11-cyfrowy
 
-**Skaner Matter BLE** pokazuje urządzenia, które aktualnie ogłaszają możliwość parowania. Samo wykrycie w skanerze nie oznacza jeszcze dodania czujnika.
+![Matter2Supla S7.16 — Instrukcja BLE](docs/images/04-pomoc-ble-wizualizacja.png)
 
-## Połączenie z SUPLA
+### 5. Pomoc — parowanie przez kod QR Matter
 
-1. Zaloguj się do [SUPLA Cloud](https://cloud.supla.org) i sprawdź adres serwera swojego konta (np. `svr51.supla.org`).
-2. W SUPLA Cloud **włącz rejestrację nowych urządzeń** na czas pierwszego podłączania bramki.
-3. W lokalnym panelu Matter2Supla otwórz sekcję **„SUPLA · pierwszy czujnik”**.
-4. Zaznacz **„Włącz integrację SUPLA”**.
-5. Uzupełnij pola:
+![Matter2Supla S7.16 — Instrukcja QR](docs/images/05-pomoc-qr-wizualizacja.png)
 
-   | Pole | Wartość |
-   | --- | --- |
-   | Serwer SUPLA | Host przypisany do konta, np. `svr51.supla.org` — bez `https://` i portu |
-   | E-mail konta SUPLA | Adres konta SUPLA |
-   | Numer czujnika Matter | Numer widoczny przy sparowanym TIMMERFLOTTE; formularz może wybrać go automatycznie |
-   | Endpoint temperatury | **`1`** dla testowanego TIMMERFLOTTE |
-   | Endpoint wilgotności | **`2`** dla testowanego TIMMERFLOTTE |
+## Instrukcja krok po kroku — dodawanie czujnika do SUPLA
 
-6. Kliknij **„Zapisz i uruchom ponownie”**.
-7. Po restarcie sprawdź status SUPLA na pulpicie i pojawienie się pomiarów w aplikacji SUPLA.
+**1. Połącz bramkę z Wi-Fi.** Otwórz panel Matter2Supla, przejdź do **Sieć**, wybierz dostępne Wi-Fi i zapisz konfigurację. Gdy zapamiętana sieć jest nieosiągalna, skorzystaj z konfiguracyjnego AP (zwykle `http://192.168.4.1`). Sprawdź gotowość Thread i kontrolera Matter.
 
-**Do połączenia z SUPLA nie wpisuje się hasła Wi-Fi ponownie ani hasła do konta SUPLA.** Wystarczają serwer, e-mail i prawidłowe przypisanie czujnika. Przy pierwszej konfiguracji zweryfikuj numer Matter — po ponownym parowaniu nie musi to być `1`.
+**2. Uruchom parowanie czujnika.** Włącz tryb parowania na urządzeniu zgodnie z instrukcją producenta. Przygotuj etykietę z kodem Matter.
 
-> Uwaga na trwałość kanałów: przypisanie pierwszego czujnika i kanałów SUPLA może zostać zablokowane po zapisie, aby zachować spójność historii pomiarów. Nie zmieniaj go przypadkowo.
+**3A. Metoda BLE + 11 cyfr.** Na pulpicie obok sekcji **Parowanie Matter** uruchom **Skaner Matter BLE** → **Wyszukaj urządzenia Matter**. Wybierz odnalezione urządzenie i jego `discriminator` (przycisk **Użyj discriminator**). Wpisz 11-cyfrowy kod z etykiety w polu parowania i uruchom dodawanie. Cyfry są widoczne — nie nagrywaj ani nie publikuj takiego ekranu.
 
-## Smart Dashboard — Stage 10F
+**3B. Metoda QR.** Odczytaj telefonem *surową treść* kodu QR Matter rozpoczynającą się od `MT:`. Wklej ją do właściwego pola QR w panelu **Parowanie Matter** i uruchom dodawanie. W tej wersji skanowanie aparatem w panelu WWW nie jest dostępne — należy wkleić tekst QR.
 
-Na górze panelu znajdują się cztery ikony: **Wi-Fi**, **Thread**, **Matter**, **SUPLA**. Kolor **zielony** oznacza aktywny stan danej usługi, a **szary** — brak aktywności lub połączenia.
+**4. Zweryfikuj czujnik.** Przejdź do **Czujniki**, sprawdź nowy Node ID, wartości pomiarów i stan raportowania. Samo parowanie Matter **nie** tworzy kanału SUPLA.
 
-Karta czujnika pokazuje **temperaturę, wilgotność, baterię, ostatni raport Matter i subskrypcję**. Poniżej jest wskaźnik **siły sygnału Thread** z RSSI w dBm oraz jakością 0–3.
+**5. Skonfiguruj SUPLA CLOUD.** Włącz rejestrację urządzeń na swoim koncie, w zakładce **SUPLA** podaj wymagane dane połączenia. Jeśli konfigurujesz bramkę pierwszy raz, wybierz właściwy czujnik dla kanału 0. Nie przypisuj istniejącego kanału 0 do innego fizycznego czujnika.
 
-**Ograniczenie RSSI:** OpenThread udostępnia dane bezpośrednio podłączonych dzieci Thread. Jeżeli czujnik komunikuje się przez inny router lub nie można go jednoznacznie zidentyfikować, panel nie powinien przypisywać obcego RSSI do TIMMERFLOTTE. Czujnik bateryjny może spać, więc ostatni odczyt RSSI nie musi być bieżący.
+**6. Dodaj kanał.** W sekcji **Matter → kanały SUPLA** wybierz sparowany czujnik, typ pomiaru i właściwe endpointy (zależne od modelu). Wybierz **Dodaj stały kanał i uruchom ponownie**. Po restarcie sprawdź pomiary w SUPLA CLOUD.
 
-Na dole dostępne są ustawienia, lista urządzeń, skaner BLE oraz diagnostyka. Podgląd `/api/status` służy do rozwiązywania problemów; przed udostępnieniem jego zawartości usuń prywatne informacje.
+**Szczegółowe wskazówki, ograniczenia i diagnostyka:** [pełna instrukcja obsługi S7.16](docs/INSTRUKCJA-OBSLUGI-S7.16.md).
 
-## Aktualizacja firmware — ważne
+## Pierwsze uruchomienie — skrót kontrolny
 
-Istnieją dwa różne rodzaje plików BIN:
+1. Uruchom ESP32-C5 z odpowiednim firmware; znajdź adres IP panelu w sieci lokalnej lub połącz się z konfiguracyjnym AP bramki.
+2. W zakładce **Sieć** skonfiguruj Wi-Fi. Upewnij się, że kontroler Matter i sieć Thread są gotowe.
+3. Uruchom tryb parowania na czujniku. W zakładce **Parowanie** wybierz Skaner BLE lub wklej treść kodu QR `MT:...`.
+4. Zweryfikuj nowy czujnik w zakładce **Czujniki** — po pierwszym połączeniu raportowanie może wymagać czasu.
+5. Włącz rejestrację nowych urządzeń w SUPLA CLOUD, skonfiguruj zakładkę **SUPLA** i przypisz czujnik do właściwego kanału.
+6. Zweryfikuj pojawienie się pomiarów w SUPLA CLOUD.
 
-| Obraz | Adres zapisu | Zastosowanie |
-| --- | --- | --- |
-| `esp_ot_br.bin` — **sama aplikacja** | **`0x20000`** | Aktualizacja istniejącej, skonfigurowanej bramki |
-| `FULL-0x0.bin` — **scalony obraz** | **`0x0`** | Czysta instalacja na nowym lub świadomie resetowanym urządzeniu |
+**Pełny przewodnik ze zrzutami:** [Instrukcja obsługi Matter2Supla S7.16](docs/INSTRUKCJA-OBSLUGI-S7.16.md).
 
-**Nie zapisuj pliku samej aplikacji pod adres `0x0`.** Pełny obraz musi zawierać odpowiednio rozmieszczony bootloader (`0x2000`), tablicę partycji (`0x8000`) i aplikację (`0x20000`). Pełny obraz może nadpisać NVS, a więc usunąć Wi-Fi, konfigurację SUPLA, dane Thread i parowanie Matter.
+## Aktualizacja firmware i bezpieczeństwo danych
 
-Przykład **aktualizacji tylko aplikacji** w Windows PowerShell (dostosuj port i ścieżkę):
+Aktualizacja istniejącej bramki, przy niezmienionym układzie partycji, może odbywać się przez wgranie **tylko aplikacji pod adres `0x20000`**. Nie wykonuj `erase-flash`: NVS zawiera dane związane m.in. z siecią, Thread i parowaniami Matter. Przed wgraniem sprawdź wariant sprzętowy, rozmiar Flash i sumę obrazu.
+
+Przykładowa komenda (dostosuj port i nazwę pliku, używaj wyłącznie zaufanego obrazu dla tej samej tablicy partycji):
 
 ```powershell
-py -m esptool --chip esp32c5 --port COM13 --baud 115200 --no-stub --before default-reset --after hard-reset write-flash 0x20000 "C:\\sciezka\\do\\esp_ot_br.bin"
+python -m esptool --chip esp32c5 --port COM13 --baud 115200 --no-stub --before default-reset --after hard-reset write-flash --flash-mode dio --flash-size 32MB --flash-freq 80m 0x20000 "PATH_TO_VERIFIED_APP.bin"
 ```
 
-**Nie używaj `erase-flash` ani pełnego `idf.py flash` do zwykłej aktualizacji sparowanej bramki.**
+Nie dołączaj do zgłoszeń GitHub rzeczywistych kodów Matter, haseł Wi-Fi, adresów e-mail kont SUPLA, zrzutów NVS ani kluczy prywatnych.
 
-## Kompilacja ze źródeł
+## Status wersji S7.16 FIX1
 
-Projekt rozwijano w środowisku:
+| Parametr | Wynik ostatniej kompilacji |
+|---|---|
+| Platforma | ESP32-C5, ESP-IDF 5.5.6 |
+| Obraz aplikacji | 3 491 440 bajtów |
+| SHA256 | `952D96FF61FCBD130D717F24A1A4F90F827A5262F575915750B325AA0A076CBE` |
+| Przyrost statycznej HP SRAM | +121 bajtów według raportu kompilacji |
+| Testy sprzętowe S7.16 | Oczekują na potwierdzenie |
 
-- **ESP-IDF 5.5.6**
-- **ESP-Matter v15**
-- Układ docelowy **ESP32-C5**
-- Python 3.12 i narzędzia ESP-IDF
+Wersja beta; jest to projekt niezależny, nieoficjalny. Nazwy Matter, Thread, IKEA i SUPLA należą do odpowiednich właścicieli.
 
-W repozytorium znajdują się katalogi `main/`, `components/m2s_supla/`, `vendor/supla-device/`, pliki CMake i domyślna konfiguracja. Komponenty zarządzane przez ESP-IDF są pobierane podczas przygotowania środowiska.
+## Dokumentacja
 
-Przykładowa sekwencja w Ubuntu/WSL po skonfigurowaniu obu SDK:
-
-```bash
-git clone https://github.com/krzychunh/Matter2Supla.git
-cd Matter2Supla
-source /sciezka/do/esp-idf-v5.5.6/export.sh
-export ESP_MATTER_PATH=/sciezka/do/esp-matter-v15
-source "$ESP_MATTER_PATH/export.sh"
-idf.py set-target esp32c5
-idf.py build
-```
-
-**Istotne:** lokalny, testowany firmware budowano z określonym `sdkconfig`, który jest wyłączony z Git ze względu na ustawienia zależne od sprzętu. Samo `sdkconfig.defaults` może nie wystarczyć do odtworzenia identycznego obrazu. Przed flashowaniem zweryfikuj konfigurację 32 MB flash, 8 MB PSRAM i tablicę partycji: NVS `0x9000`, bootloader `0x2000`, partycje `0x8000`, aplikacja `0x20000` o rozmiarze `0x800000`.
-
-## Rozwiązywanie problemów
-
-| Problem | Co sprawdzić |
-| --- | --- |
-| Nie otwiera się panel | Czy urządzenie ma adres IP w routerze; przy pierwszym uruchomieniu użyj `192.168.4.1` po połączeniu z AP bramki |
-| Czujnik nie jest wykrywany | Tryb parowania, baterie, odległość od bramki, skaner BLE Matter |
-| Nie udaje się parowanie | Poprawność `MT:…`, gotowość Thread/Matter, czy czujnik nie jest już powiązany z innym kontrolerem |
-| Brak baterii | Poczekaj na udany odczyt; przy braku odpowiedzi bramka ponawia próbę |
-| Brak sygnału Thread | Czujnik może być za innym routerem Thread lub przypisanie RSSI może być niejednoznaczne |
-| SUPLA offline | Poprawność hosta, e-maila, aktywna rejestracja urządzeń i dostęp do Internetu |
-| Jest pomiar Matter, ale nie w SUPLA | Numer węzła i endpointy, stan połączenia SUPLA, rejestracja urządzenia |
-
-## Bezpieczeństwo i prywatność
-
-- **Nie publikuj** swojego kodu Matter `MT:…`, haseł Wi-Fi, tokenów ani zrzutów pamięci NVS.
-- Domyślna sieć konfiguracyjna ma znane hasło `12345678`; uruchamiaj konfigurację w zaufanym otoczeniu.
-- Nie udostępniaj lokalnego panelu WWW bezpośrednio przez przekierowanie portów z Internetu.
-- Przed publicznym `git push` sprawdzaj zmiany i pliki konfiguracyjne, również te wyłączone z kompilacji.
-- Projekt jest w fazie Beta; nie stosuj go jako jedynego źródła danych w systemach wymagających niezawodności lub bezpieczeństwa.
-
-## Stan projektu i plany
-
-**Stage 10F** został skompilowany dla ESP32-C5. Wcześniejsze testy potwierdziły automatyczne raportowanie temperatury i wilgotności z TIMMERFLOTTE oraz ich aktualizację w SUPLA. Nowe elementy pulpitu Stage 10F wymagają dalszego sprawdzenia na urządzeniu.
-
-Planowane kierunki rozwoju to długoterminowa diagnostyka, historia pomiarów i szersza obsługa czujników Matter — z uwzględnieniem ograniczonej pamięci wewnętrznej ESP32-C5.
-
-## Licencje i autorstwo
-
-Projekt: **[krzychunh](https://github.com/krzychunh)**.  
-W katalogu `vendor/supla-device/` znajduje się kod biblioteki SUPLA wraz z jej własną licencją. Licencję kodu własnego Matter2Supla należy określić oddzielnie w pliku `LICENSE`, zanim projekt zostanie ogłoszony jako oprogramowanie open source.
-
----
-
-**Matter2Supla Beta — Matter i Thread w świecie SUPLA.**
+- [Instrukcja obsługi — Wi-Fi, BLE, QR, SUPLA, diagnostyka](docs/INSTRUKCJA-OBSLUGI-S7.16.md)
+- [Changelog S7.16](docs/CHANGELOG-S7.16.md)
+- [Release notes S7.16](docs/RELEASE-NOTES-S7.16.md)
