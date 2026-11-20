@@ -13,9 +13,12 @@ typedef struct {
 esp_err_t m2s_network_start(void);
 esp_err_t m2s_network_apply(const char *ssid, const char *password);
 void m2s_network_status(m2s_network_status_t *out);
-typedef struct { char ssid[33]; int rssi; int secure; } m2s_wifi_ap_t;
+typedef struct { char ssid[33]; int rssi; int secure; int channel; } m2s_wifi_ap_t;
 esp_err_t m2s_network_scan(void);
+esp_err_t m2s_network_scan_ex(bool full);
 int m2s_network_scan_results(m2s_wifi_ap_t *out,int capacity,bool *busy);
+int m2s_network_scan_last_error(void);
+int m2s_network_scan_phase(void);
 esp_err_t m2s_network_factory_reset(void);
 #ifdef __cplusplus
 }
